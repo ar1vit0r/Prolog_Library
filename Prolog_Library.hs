@@ -12,7 +12,7 @@ data Clause = Term :- [Term] | Simple Term | Term :\== Term
 type Prolog = [Clause]
 
 --unification https://www.javatpoint.com/unification-in-prolog
---prolog in haskell https://core.ac.uk/download/pdf/84872478.pdf
+--prolog in haskell https://core.ac.uk/download/pdf/84872478.pdf e tbm https://github.com/aartamonau/hswip
 --o Prolog tenta combinar o objetivo com cada cláusula. O processo de correspondência funciona da esquerda para a direita. 
 --A meta falhará se nenhuma correspondência for encontrada. Se uma correspondência for encontrada, a ação será executada. 
 --O Prolog usa a técnica de unificação que é uma forma muito geral da técnica de correspondência. Na unificação, 

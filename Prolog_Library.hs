@@ -11,6 +11,16 @@ data Clause = Term :- [Term] | Simple Term | Term :\== Term
 
 type Prolog = [Clause]
 
+--unification https://www.javatpoint.com/unification-in-prolog
+--prolog in haskell https://core.ac.uk/download/pdf/84872478.pdf
+--o Prolog tenta combinar o objetivo com cada cláusula. O processo de correspondência funciona da esquerda para a direita. 
+--A meta falhará se nenhuma correspondência for encontrada. Se uma correspondência for encontrada, a ação será executada. 
+--O Prolog usa a técnica de unificação que é uma forma muito geral da técnica de correspondência. Na unificação, 
+--uma ou mais variáveis ​​recebem valor para tornar os dois termos de chamada idênticos. Esse processo é chamado de vinculação das variáveis ​​aos valores. 
+--Por exemplo, o Prolog pode unificar os termos cat(A) e cat(mary) ligando a variável A ao átomo mary, o que significa que estamos dando o valor mary à variável A. 
+--O Prolog pode unificar pessoa(Kevin, dane) e pessoa(L , S) ligando L e S ao átomo de kevin e dane, respectivamente. Na partida, todas as variáveis ​​não têm valor. 
+--Na unificação, uma vez que uma variável é vinculada ao valor, ela pode ser desvinculada novamente e talvez ser vinculada a um novo valor usando o retrocesso.
+
 --unify :: Term -> Term -> Term
 --unify (Var x) (Var y) = Var (if x == y then x->-Var y else )
 --unify (Atom x) (Atom y) = Atom (if x == y then x->-Atom y else )
@@ -26,11 +36,11 @@ preUnify (Atom x) (Var y) = True
 
 canUnify :: Clause -> Clause -> Bool
 canUnify _ _ = False
-canUnify (Simple (Func y (x:xs))) (Simple (Func z (w:ws))) = if y == z && preUnify x w then canUnify (Simple (Func y xs)) (Simple (Func z ws)) else False
+canUnify (Simple (Func y (x:xs))) (Simple (Func z (w:ws))) = y == z && preUnify x w then canUnify (Simple (Func y xs)) (Simple (Func z ws)) else False
 
        -- parent(A, B, C)  Unify parent(kevin, henry, 30) 
 test1 :: Clause
-test1 = Simple (Func "parent" [Atom "A", Atom "B", Atom "C"])
+test1 = Simple (Func "parent" [Var "A", Var "B", Var "C"])
 
 test10 :: Clause
 test10 = Simple (Func "parent" [Atom "kevin", Atom "henry", Atom "30"])

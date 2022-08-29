@@ -1,0 +1,43 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "command": "cmd",
+    "type": "shell",
+    "args": ["/C"],
+    "supressTaskName": false,
+    "tasks": [
+        {
+            "label": "Ghci - to interpret and Run Haskell",
+            "args": [
+                "ghci",
+                "${fileDirname}\\${fileBasenameNoExtension}.hs",
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        /*{    
+            "label": "Ghc - Only Compile Haskell", // need main in the file
+            "args": [
+                "ghc",
+                "${fileDirname}\\${fileBasenameNoExtension}.hs",
+                "-o",
+                "${fileBasenameNoExtension}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }*/
+    ] 
+}

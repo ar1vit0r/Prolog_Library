@@ -36,7 +36,7 @@ preUnify (Atom x) (Var y) = True
 
 canUnify :: Clause -> Clause -> Bool
 canUnify _ _ = False
-canUnify (Simple (Func y (x:xs))) (Simple (Func z (w:ws))) = y == z && preUnify x w then canUnify (Simple (Func y xs)) (Simple (Func z ws)) else False
+canUnify (Simple (Func y (x:xs))) (Simple (Func z (w:ws))) = (y == z && preUnify x w) && canUnify (Simple (Func y xs)) (Simple (Func z ws))
 
        -- parent(A, B, C)  Unify parent(kevin, henry, 30) 
 test1 :: Clause
@@ -66,7 +66,7 @@ myProg2 = [
        Simple (Func "sorted" [Var "_"]),
        Func "sorted" [Var "X", Var "Y" :|| Var "Rest"] :- [Func "menorIgual" [Var "X", Var "Y"], Func "sorted" [Var "Y" :|| Var "Rest"]],
        Func "sorted" [Var "List", Var "Sorted"] :- [Func "perm" [Var "List", Var "Sorted"], Func "sorted" [Var "Sorted"]],
-       
+
        --A permutation of a list is one of the elements
        --of the original list stuck at the head of the
        --permuted list, and the rest is a permuted version
@@ -89,7 +89,7 @@ myProg3 = [
        Simple (Func "progenitor" [Atom "joao", Atom "ari"]),
        Simple (Func "progenitor" [Atom "vitoria", Atom "ari"]),
        Simple (Func "progenitor" [Atom "olicio", Atom "janeti"]),
-       Simple (Func "progenitor" [Atom "paulina", Atom "janeti"]), 
+       Simple (Func "progenitor" [Atom "paulina", Atom "janeti"]),
        Simple (Func "progenitor" [Atom "ari", Atom "ari_vitor"]),
        Simple (Func "progenitor" [Atom "janeti", Atom "ari_vitor"]),
        Simple (Func "progenitor" [Atom "ari", Atom "ariel"]),
@@ -97,11 +97,11 @@ myProg3 = [
        Simple (Func "sexo" [Atom "paulina", Atom "feminino"]),
        Simple (Func "sexo" [Atom "vitoria", Atom "feminino"]),
        Simple (Func "sexo" [Atom "janeti", Atom "feminino"]),
-       Simple (Func "sexo" [Atom "ari", Atom "masculino"]), 
+       Simple (Func "sexo" [Atom "ari", Atom "masculino"]),
        Simple (Func "sexo" [Atom "joao", Atom "masculino"]),
-       Simple (Func "sexo" [Atom "olicio", Atom "masculino"]), 
+       Simple (Func "sexo" [Atom "olicio", Atom "masculino"]),
        Simple (Func "sexo" [Atom "ariel", Atom "masculino"]),
-       Simple (Func "sexo" [Atom "ari_vitor", Atom "masculino"]), 
+       Simple (Func "sexo" [Atom "ari_vitor", Atom "masculino"]),
 --irma
        Simple (Func "irma" [Var "X", Var "Y"]),
        Simple (Func "progenitor" [Var "A", Var "X"]),
@@ -109,7 +109,7 @@ myProg3 = [
        Var "X":\== Var "Y", --X\==Y <-------------------
        Simple (Func "sexo" [Var "X", Atom "feminino"]),
 --irmao
-       Simple (Func "irmao" [Var "X", Var "Y"]), 
+       Simple (Func "irmao" [Var "X", Var "Y"]),
        Simple (Func "progenitor" [Var "A", Var "X"]),
        Simple (Func "progenitor" [Var "A", Var "Y"]),
        Var "X":\== Var "Y", --X\==Y <-------------------

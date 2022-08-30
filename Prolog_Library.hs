@@ -27,16 +27,12 @@ type Prolog = [Clause]
 --unify (Func x xs) (Func y ys) = Func (if x == y then x->-Func y ys else )
 
 preUnify :: Term -> Term -> Bool
-preUnify _ _ = False
-preUnify (Atom x) (Atom y) = x == y
-preUnify (Var x) (Var y) = x == y
-preUnify (Var x) (Atom y) = True
-preUnify (Atom x) (Var y) = True
+preUnify (Atom x) (Atom y) | preUnify (Var x) (Var y) = x == y
+preUnify (Var x) (Atom y) | preUnify (Atom x) (Var y) = True
 --preUnify (x:xs) (y:ys) = preUnify x y && preUnify xs ys
 
-canUnify :: Clause -> Clause -> Bool
-canUnify _ _ = False
-canUnify (Simple (Func y (x:xs))) (Simple (Func z (w:ws))) = (y == z && preUnify x w) && canUnify (Simple (Func y xs)) (Simple (Func z ws))
+canUnify :: Clause -> Clause -> Bool -- depois no main: if canUnify c1 c2 then unify c1 c2 else False
+canUnify (Simple (Func y (x:xs))) (Simple (Func z (w:ws))) = y == z && preUnify x w && canUnify (Simple (Func y xs)) (Simple (Func z ws))
 
        -- parent(A, B, C)  Unify parent(kevin, henry, 30) 
 test1 :: Clause

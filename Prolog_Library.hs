@@ -1,3 +1,5 @@
+import Language.Haskell.TH (match, ExpQ)  -- dyn -> Dynamically binding a variable (unhygenic)  
+                                          --match -> https://hackage.haskell.org/package/template-haskell-2.16.0.0/docs/Language-Haskell-TH-Lib-Internal.html#v:match
 -- Ari Vitor da Silva Lazzarotto
 
 --1 - Interpretar com Ghci:
@@ -11,8 +13,8 @@ data Clause = Term :- [Term] | Simple Term | Term :\== Term
 
 type Prolog = [Clause]
 
---unification https://www.javatpoint.com/unification-in-prolog
---prolog in haskell https://core.ac.uk/download/pdf/84872478.pdf e tbm https://github.com/aartamonau/hswip
+--https://curiosity-driven.org/prolog-interpreter
+
 --o Prolog tenta combinar o objetivo com cada cláusula. O processo de correspondência funciona da esquerda para a direita. 
 --A meta falhará se nenhuma correspondência for encontrada. Se uma correspondência for encontrada, a ação será executada. 
 --O Prolog usa a técnica de unificação que é uma forma muito geral da técnica de correspondência. Na unificação, 
@@ -21,18 +23,18 @@ type Prolog = [Clause]
 --O Prolog pode unificar pessoa(Kevin, dane) e pessoa(L , S) ligando L e S ao átomo de kevin e dane, respectivamente. Na partida, todas as variáveis ​​não têm valor. 
 --Na unificação, uma vez que uma variável é vinculada ao valor, ela pode ser desvinculada novamente e talvez ser vinculada a um novo valor usando o retrocesso.
 
---unify :: Term -> Term -> Term
---unify (Var x) (Var y) = Var (if x == y then x->-Var y else )
---unify (Atom x) (Atom y) = Atom (if x == y then x->-Atom y else )
---unify (Func x xs) (Func y ys) = Func (if x == y then x->-Func y ys else )
+--https://www.educative.io/answers/what-is-the-match-method-javascript
+--an expression that needs to be searched or replaced and a modifier that modifies the search
+--match :: 
 
-preUnify :: Term -> Term -> Bool
-preUnify (Atom x) (Atom y) | preUnify (Var x) (Var y) = x == y
-preUnify (Var x) (Atom y) | preUnify (Atom x) (Var y) = True
---preUnify (x:xs) (y:ys) = preUnify x y && preUnify xs ys
+--substitute — that takes variable bindings from match and returns a term with all occurrences of these 
+--variables substituted with values from the bindings map.
+--subs :: (Var, Term) -> Term -> Term  
+--subst ::[(Var,Term)] -> Term -> Term
 
-canUnify :: Clause -> Clause -> Bool -- depois no main: if canUnify c1 c2 then unify c1 c2 else False
-canUnify (Simple (Func y (x:xs))) (Simple (Func z (w:ws))) = y == z && preUnify x w && canUnify (Simple (Func y xs)) (Simple (Func z ws))
+--This function takes two maps of bindings and returns a combined bindings map if there are no conflicts. 
+--If any of the bound variables is present in both bindings maps but the terms they are bound to do not match then mergeBindings returns null.
+--mergeBindings :: [(Var,Term)] -> [(Var,Term)] -> [(Var,Term)]
 
        -- parent(A, B, C)  Unify parent(kevin, henry, 30) 
 test1 :: Clause

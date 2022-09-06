@@ -13,6 +13,18 @@ data Clause = Term :- [Term] | Simple Term | Term :\== Term
 
 type Prolog = [Clause]
 
+canUnify :: Term -> Clause -> Bool
+canUnify t (Simple t2) = canUnify2 t t2
+canUnify t (h :- t2) = canUnify2 t h
+
+canUnifiy2 :: Term -> Term -> Bool
+canUnify2 (Func n1 l1) (Func n2 l2)
+    | n1 == n2    = canUnifyArgs l1 l2
+canUnify2 (Atom n1) (Atom n2) = n1 == n2
+
+canUnifyArgs :: [Term] -> [Term] -> Bool
+canUnifyArgs (x:xs) (y:ys) =
+
 --https://curiosity-driven.org/prolog-interpreter
 
 --o Prolog tenta combinar o objetivo com cada cláusula. O processo de correspondência funciona da esquerda para a direita. 

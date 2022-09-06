@@ -6,12 +6,32 @@ import Language.Haskell.TH (match, ExpQ)  -- dyn -> Dynamically binding a variab
 --2 - Digitar "main" e apertar enter no interpretador:
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
-data Term = Var String | Atom String | Func String [Term] | Term :|| Term
+data Term = Var String | Atom String | Func String [Term] 
        deriving (Eq,Show)
 data Clause = Term :- [Term] | Simple Term | Term :\== Term
        deriving (Eq,Show)
 
 type Prolog = [Clause]
+
+
+subst:: (Term,Term) -> Term -> Term
+subst (Var n1, t) (Var n2)
+   | n1 == n2   = t
+   | otherwise = Var n2
+subst (t1,t2) (Atom s) = (Atom s)
+subst (t1,t2) (Func n l) = Fun n (map (subst (t1,t2) l)
+
+
+subsAll :: [(Term,Term)] -> Term -> Term
+subsAll [] t = t
+subsAll (x:xs) t = subsAll xs (subst x t)
+
+unify :: Term -> Clause -> [(Term,Term)]
+unify t (Simple t2) = unify2 t t2
+unify t (h :- t2) = unify2 t h
+
+unify2 (Func n1 l1) (Func n2 l2) = zip l1 l2
+unify2 t1 t2 = []
 
 canUnify :: Term -> Clause -> Bool
 canUnify t (Simple t2) = canUnify2 t t2
@@ -23,8 +43,11 @@ canUnify2 (Func n1 l1) (Func n2 l2)
 canUnify2 (Atom n1) (Atom n2) = n1 == n2
 
 canUnifyArgs :: [Term] -> [Term] -> Bool
-canUnifyArgs (x:xs) (y:ys) =
-
+canUnifyArgs [] [] = True
+canUnifyArgs ((Var n1):xs) ((Var n2):ys) =  canUnifyArgs xs ys
+canUnifyArgs ((Atom n1):xs) ((Atom n2):ys) =  n1 == n2 && canUnifyArgs xs ys
+canUnifyArgs ((Atom n1):xs) ((Var n2):ys) =  canUnifyArgs xs ys
+canUnifyArgs (_:xs) (_:ys)  = False
 --https://curiosity-driven.org/prolog-interpreter
 
 --o Prolog tenta combinar o objetivo com cada cláusula. O processo de correspondência funciona da esquerda para a direita. 

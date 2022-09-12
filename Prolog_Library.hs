@@ -1,53 +1,55 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
+
 import Language.Haskell.TH (match, ExpQ)  -- dyn -> Dynamically binding a variable (unhygenic)  
                                           --match -> https://hackage.haskell.org/package/template-haskell-2.16.0.0/docs/Language-Haskell-TH-Lib-Internal.html#v:match
 -- Ari Vitor da Silva Lazzarotto
 
 --1 - Interpretar com Ghci:
 --2 - Digitar "main" e apertar enter no interpretador:
-{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
-data Term = Var String | Atom String | Func String [Term] 
+data Term = Var String | Atom String | Func String [Term]
        deriving (Eq,Show)
 data Clause = Term :- [Term] | Simple Term | Term :\== Term
        deriving (Eq,Show)
 
 type Prolog = [Clause]
 
-
-subst:: (Term,Term) -> Term -> Term
-subst (Var n1, t) (Var n2)
+subs:: (Term,Term) -> Term -> Term
+subs (Var n1, t) (Var n2)
    | n1 == n2   = t
    | otherwise = Var n2
-subst (t1,t2) (Atom s) = (Atom s)
-subst (t1,t2) (Func n l) = Fun n (map (subst (t1,t2) l)
-
+subs (t1,t2) (Atom s) = Atom s
+subs (t1,t2) (Func n l) = Func n l'
+   where l' = map (subs (t1,t2)) l --(map (subs (t1,t2) l)) -> substitui t1 por t2 em cada elemento da lista l
 
 subsAll :: [(Term,Term)] -> Term -> Term
-subsAll [] t = t
-subsAll (x:xs) t = subsAll xs (subst x t)
+subsAll xs t = foldl (flip subs) t xs --subsAll (x:xs) t = subsAll xs (subs x t)
 
 unify :: Term -> Clause -> [(Term,Term)]
 unify t (Simple t2) = unify2 t t2
 unify t (h :- t2) = unify2 t h
 
+unify2 :: Term -> Term -> [(Term, Term)] --problem
 unify2 (Func n1 l1) (Func n2 l2) = zip l1 l2
 unify2 t1 t2 = []
 
-canUnify :: Term -> Clause -> Bool
+canUnify :: Term -> Clause -> Bool -- canUnify (Func "parent" [Var "A", Var "B", Var "C"]) test10
 canUnify t (Simple t2) = canUnify2 t t2
 canUnify t (h :- t2) = canUnify2 t h
 
-canUnifiy2 :: Term -> Term -> Bool
+canUnify2 :: Term -> Term -> Bool
 canUnify2 (Func n1 l1) (Func n2 l2)
     | n1 == n2    = canUnifyArgs l1 l2
 canUnify2 (Atom n1) (Atom n2) = n1 == n2
 
-canUnifyArgs :: [Term] -> [Term] -> Bool
+canUnifyArgs :: [Term] -> [Term] -> Bool --canUnifyArgs ([Var "A", Var "B", Var "C"]) ([Atom "kevin", Atom "henry", Atom "30"])
 canUnifyArgs [] [] = True
 canUnifyArgs ((Var n1):xs) ((Var n2):ys) =  canUnifyArgs xs ys
 canUnifyArgs ((Atom n1):xs) ((Atom n2):ys) =  n1 == n2 && canUnifyArgs xs ys
 canUnifyArgs ((Atom n1):xs) ((Var n2):ys) =  canUnifyArgs xs ys
 canUnifyArgs (_:xs) (_:ys)  = False
+
 --https://curiosity-driven.org/prolog-interpreter
 
 --o Prolog tenta combinar o objetivo com cada cláusula. O processo de correspondência funciona da esquerda para a direita. 
@@ -86,31 +88,6 @@ myProg1 = [
        Simple (Func "likes" [Atom "max", Atom "logic"]),
        Simple (Func "likes" [Atom "claire", Atom "maths"]),
        Func "likes" [Var "X", Var "P"] :- [Func "based" [Var "P", Var "Y"], Func "likes" [Var "X", Var "Y"]]]
-
-       --Sorted is a sorted version of List if Sorted is
-       --a permutation of List (same elements in possibly
-       --different order) and Sorted is sorted (second rule).
-myProg2 :: Prolog
-myProg2 = [
-       --A list is sorted if it has zero or one elements,
-       --or if it has two or more and they are in the
-       --right order (recursively).
-       Simple (Func "sorted" []),
-       Simple (Func "sorted" [Var "_"]),
-       Func "sorted" [Var "X", Var "Y" :|| Var "Rest"] :- [Func "menorIgual" [Var "X", Var "Y"], Func "sorted" [Var "Y" :|| Var "Rest"]],
-       Func "sorted" [Var "List", Var "Sorted"] :- [Func "perm" [Var "List", Var "Sorted"], Func "sorted" [Var "Sorted"]],
-
-       --A permutation of a list is one of the elements
-       --of the original list stuck at the head of the
-       --permuted list, and the rest is a permuted version
-       --of the original list without that element.
-       Simple (Func "perm" []),
-       Func "perm" [Var "List", Var "H" :|| Var "Perm"] :- [Func "delete" [Var "H", Var "List", Var "Rest"], Func "perm" [Var "Rest", Var "Perm"]],
-
-       --Delete an element from a list by just not including
-       --t when it's found (recursively; like the member rule).
-       Simple (Func "delete" [Var "X", Var "X" :|| Var "T", Var "T"]),
-       Func "delete" [Var "X", Var "H" :|| Var "T", Var "H" :|| Var "NT"] :- [Func "delete" [Var "X", Var "T", Var "NT"]]]
 
        --Genealogic Tree Example
 myProg3 :: Prolog

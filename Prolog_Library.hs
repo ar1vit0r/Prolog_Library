@@ -1,12 +1,14 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
-import Language.Haskell.TH (match, ExpQ)  -- dyn -> Dynamically binding a variable (unhygenic)  
-                                          --match -> https://hackage.haskell.org/package/template-haskell-2.16.0.0/docs/Language-Haskell-TH-Lib-Internal.html#v:match
 -- Ari Vitor da Silva Lazzarotto
 
 --1 - Interpretar com Ghci:
 --2 - Digitar "main" e apertar enter no interpretador:
+
+import qualified Data.Maybe --Data.Maybe -> https://hackage.haskell.org/package/base-
+                            --Nothing serve para representar um valor que não existe (não é um valor válido) e Just x serve para representar um valor que existe (é um valor válido). 
+                            --Funciona como um tipo de dado que pode ser Nothing ou Just x, onde x é um valor válido.           
 
 data Term = Var String | Atom String | Func String [Term]
        deriving (Eq,Show)
@@ -15,63 +17,90 @@ data Clause = Term :- [Term] | Simple Term | Term :\== Term
 
 type Prolog = [Clause]
 
-subs:: (Term,Term) -> Term -> Term
-subs (Var n1, t) (Var n2)
-   | n1 == n2   = t
-   | otherwise = Var n2
-subs (t1,t2) (Atom s) = Atom s
-subs (t1,t2) (Func n l) = Func n l'
-   where l' = map (subs (t1,t2)) l --(map (subs (t1,t2) l)) -> substitui t1 por t2 em cada elemento da lista l
+-- Função que retorna a cabeça de uma cláusula
+headOf :: Clause -> Term
+headOf (t :- _) = t
+headOf (Simple t) = t
+headOf (t :\== _) = t
 
-subsAll :: [(Term,Term)] -> Term -> Term
-subsAll xs t = foldl (flip subs) t xs --subsAll (x:xs) t = subsAll xs (subs x t)
+-- Função que retorna o corpo de uma cláusula
+bodyOf :: Clause -> [Term]
+bodyOf (t :- ts) = ts       
+bodyOf (Simple t) = []
+bodyOf (t :\== t') = []
 
-unify :: Term -> Clause -> [(Term,Term)]
-unify t (Simple t2) = unify2 t t2
-unify t (h :- t2) = unify2 t h
+-- Função que verifica se dois termos unificam
+match :: Term -> Term -> Bool
+match (Var x) _ = True
+match _ (Var x) = True
+match (Atom x) (Atom y) = x == y
+match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)           --Verifica se os nomes são iguais e se os argumentos unificam
+match _ _ = False
 
-unify2 :: Term -> Term -> [(Term, Term)] --problem
-unify2 (Func n1 l1) (Func n2 l2) = zip l1 l2
-unify2 t1 t2 = []
+-- Função que busca cláusulas que unificam com um termo - query myProg1 (Atom "prolog")
+query :: Prolog -> Term -> [Clause]
+query prog term = [clause | clause <- prog, match term (headOf clause)]                             --Busca todas as cláusulas que unificam com o termo
 
-canUnify :: Term -> Clause -> Bool -- canUnify (Func "parent" [Var "A", Var "B", Var "C"]) test10
-canUnify t (Simple t2) = canUnify2 t t2
-canUnify t (h :- t2) = canUnify2 t h
+-- Função que substitui variáveis em um termo
+substitute :: (String, Term) -> Term -> Term
+substitute (x, t) (Var y) = if x == y then t else Var y                                             --Se a variável for igual a x, retorna o termo t, senão retorna a variável
+substitute (x, t) (Atom y) = Atom y
+substitute (x, t) (Func n args) = Func n (map (substitute (x, t)) args)                             --Aplica a substituição em todos os argumentos
 
-canUnify2 :: Term -> Term -> Bool
-canUnify2 (Func n1 l1) (Func n2 l2)
-    | n1 == n2    = canUnifyArgs l1 l2
-canUnify2 (Atom n1) (Atom n2) = n1 == n2
+-- Função que substitui variáveis em uma lista de termos
+substituteAll :: [(String, Term)] -> Term -> Term
+substituteAll [] t = t
+substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')                              --Aplica a substituição em todos os termos da lista
 
-canUnifyArgs :: [Term] -> [Term] -> Bool --canUnifyArgs ([Var "A", Var "B", Var "C"]) ([Atom "kevin", Atom "henry", Atom "30"])
-canUnifyArgs [] [] = True
-canUnifyArgs ((Var n1):xs) ((Var n2):ys) =  canUnifyArgs xs ys
-canUnifyArgs ((Atom n1):xs) ((Atom n2):ys) =  n1 == n2 && canUnifyArgs xs ys
-canUnifyArgs ((Atom n1):xs) ((Var n2):ys) =  canUnifyArgs xs ys
-canUnifyArgs (_:xs) (_:ys)  = False
+-- Função que aplica uma substituição em uma cláusula
+applySubst :: (String, Term) -> Clause -> Clause
+applySubst (x, t) (t1 :- ts) = substitute (x, t) t1 :- map (substitute (x, t)) ts                   --Aplica a substituição na cabeça e no corpo
+applySubst (x, t) (Simple t1) = Simple (substitute (x, t) t1)                                       --Aplica a substituição no termo
+applySubst (x, t) (t1 :\== t2) = substitute (x, t) t1 :\== substitute (x, t) t2                     --Aplica a substituição nos dois termos
 
---https://curiosity-driven.org/prolog-interpreter
+-- Função que retorna todas as substituições que unificam com um termo
+unify :: Term -> Term -> Maybe [(String, Term)]
+unify (Var x) t = Just [(x, t)]
+unify t (Var x) = Just [(x, t)]
+unify (Atom x) (Atom y) = if x == y then Just [] else Nothing                                        --Se os átomos forem iguais, retorna uma lista vazia
+unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se os nomes forem iguais, unifica as listas de argumentos
+unify _ _ = Nothing                                                                                  
 
---o Prolog tenta combinar o objetivo com cada cláusula. O processo de correspondência funciona da esquerda para a direita. 
---A meta falhará se nenhuma correspondência for encontrada. Se uma correspondência for encontrada, a ação será executada. 
---O Prolog usa a técnica de unificação que é uma forma muito geral da técnica de correspondência. Na unificação, 
---uma ou mais variáveis ​​recebem valor para tornar os dois termos de chamada idênticos. Esse processo é chamado de vinculação das variáveis ​​aos valores. 
---Por exemplo, o Prolog pode unificar os termos cat(A) e cat(mary) ligando a variável A ao átomo mary, o que significa que estamos dando o valor mary à variável A. 
---O Prolog pode unificar pessoa(Kevin, dane) e pessoa(L , S) ligando L e S ao átomo de kevin e dane, respectivamente. Na partida, todas as variáveis ​​não têm valor. 
---Na unificação, uma vez que uma variável é vinculada ao valor, ela pode ser desvinculada novamente e talvez ser vinculada a um novo valor usando o retrocesso.
+-- Função que retorna todas as substituições que unificam com uma lista de termos
+unifyList :: [Term] -> [Term] -> Maybe [(String, Term)]
+unifyList [] [] = Just []
+unifyList (t:ts) (t':ts') = case unify t t' of                                                        --Unifica os termos da lista
+       Nothing -> Nothing                                                                             --Se não unificou, retorna Nothing
+       Just subst -> case unifyList (map (substituteAll subst) ts) (map (substituteAll subst) ts') of --Se unificou, aplica a substituição e continua
+              Nothing -> Nothing
+              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
+unifyList _ _ = Nothing
 
---https://www.educative.io/answers/what-is-the-match-method-javascript
---an expression that needs to be searched or replaced and a modifier that modifies the search
---match :: 
+--Função que interpreta uma clausula
+interpret :: Prolog -> Term -> Maybe [(String, Term)]
+interpret prog term = case unify (headOf clause) term of                                              --Unifica a cabeça da cláusula com o termo
+       Nothing -> Nothing
+       Just subst -> case interpretList prog (map (substituteAll subst) (bodyOf clause)) of           --Aplica a substituição no corpo da cláusula e interpreta a lista
+              Nothing -> Nothing
+              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
+       where clause = head (query prog term)                                                          --Busca a primeira cláusula que unifica com o termo
 
---substitute — that takes variable bindings from match and returns a term with all occurrences of these 
---variables substituted with values from the bindings map.
---subs :: (Var, Term) -> Term -> Term  
---subst ::[(Var,Term)] -> Term -> Term
+-- Função que interpreta uma lista de cláusulas
+interpretList :: Prolog -> [Term] -> Maybe [(String, Term)]
+interpretList _ [] = Just []
+interpretList prog (t:ts) = case interpret prog t of                                                  --Interpreta o termo
+       Nothing -> Nothing
+       Just subst -> case interpretList prog (map (substituteAll subst) ts) of                        --Aplica a substituição e continua
+              Nothing -> Nothing
+              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
 
---This function takes two maps of bindings and returns a combined bindings map if there are no conflicts. 
---If any of the bound variables is present in both bindings maps but the terms they are bound to do not match then mergeBindings returns null.
---mergeBindings :: [(Var,Term)] -> [(Var,Term)] -> [(Var,Term)]
+queryResult :: [Clause]                                                                               --interpret myProg1 (Func "likes" [Atom "max", Var "X"])
+queryResult = query myProg1 (Func "likes" [Atom "max", Var "X"])                                      --Busca todas as cláusulas que unificam com likes(max, X)
+
+main :: IO ()
+main = print queryResult
+
+--Examples
 
        -- parent(A, B, C)  Unify parent(kevin, henry, 30) 
 test1 :: Clause
@@ -88,6 +117,11 @@ myProg1 = [
        Simple (Func "likes" [Atom "max", Atom "logic"]),
        Simple (Func "likes" [Atom "claire", Atom "maths"]),
        Func "likes" [Var "X", Var "P"] :- [Func "based" [Var "P", Var "Y"], Func "likes" [Var "X", Var "Y"]]]
+
+myProg2 :: Prolog
+myProg2 = [
+       Simple (Func "parent" [Var "A", Var "B", Var "C"]),
+       Simple (Func "parent" [Atom "kevin", Atom "henry", Atom "30"])]
 
        --Genealogic Tree Example
 myProg3 :: Prolog
@@ -116,13 +150,13 @@ myProg3 = [
        Simple (Func "irma" [Var "X", Var "Y"]),
        Simple (Func "progenitor" [Var "A", Var "X"]),
        Simple (Func "progenitor" [Var "A", Var "Y"]),
-       Var "X":\== Var "Y", --X\==Y <-------------------
+       Var "X":\== Var "Y",
        Simple (Func "sexo" [Var "X", Atom "feminino"]),
 --irmao
        Simple (Func "irmao" [Var "X", Var "Y"]),
        Simple (Func "progenitor" [Var "A", Var "X"]),
        Simple (Func "progenitor" [Var "A", Var "Y"]),
-       Var "X":\== Var "Y", --X\==Y <-------------------
+       Var "X":\== Var "Y",
        Simple (Func "sexo" [Var "X", Atom "masculino"]),
 --descendente
        Simple (Func "descendente" [Var "X", Var "Y"]),
@@ -152,10 +186,10 @@ myProg3 = [
        Simple (Func "irmao" [Var "A", Var "B"]),
        Simple (Func "progenitor" [Var "A", Var "X"]),
        Simple (Func "progenitor" [Var "B", Var "Y"]),
-       Var "X":\== Var "Y", --X\==Y <-------------------
+       Var "X":\== Var "Y",
 --primo
        Simple (Func "primo" [Var "X", Var "Y"]),
        Simple (Func "irma" [Var "A", Var "B"]),
        Simple (Func "progenitor" [Var "A", Var "X"]),
        Simple (Func "progenitor" [Var "B", Var "Y"]),
-       Var "X":\== Var "Y"] --X\==Y <-------------------
+       Var "X":\== Var "Y"]

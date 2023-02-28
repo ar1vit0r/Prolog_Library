@@ -6,7 +6,7 @@
 --1 - Interpretar com Ghci:
 --2 - Digitar "main" e apertar enter no interpretador:
 
-import qualified Data.Maybe --Data.Maybe -> https://hackage.haskell.org/package/base-
+import qualified Data.Maybe --Data.Maybe -> https://hackage.haskell.org/package/base-4.17.0.0/docs/Data-Maybe.html
                             --Nothing serve para representar um valor que não existe (não é um valor válido) e Just x serve para representar um valor que existe (é um valor válido). 
                             --Funciona como um tipo de dado que pode ser Nothing ou Just x, onde x é um valor válido.           
 

@@ -92,13 +92,10 @@ interpretList prog (t:ts) = case interpret prog t of                            
        Nothing -> Nothing
        Just subst -> case interpretList prog (map (substituteAll subst) ts) of                        --Aplica a substituição e continua
               Nothing -> Nothing
-              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
-
-queryResult :: [Clause]                                                                               --interpret myProg1 (Func "likes" [Atom "max", Var "X"])
-queryResult = query myProg1 (Func "likes" [Atom "max", Var "X"])                                      --Busca todas as cláusulas que unificam com likes(max, X)
+              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições                                   
 
 main :: IO ()
-main = print queryResult
+main = print (interpret myProg1 (Func "likes" [Atom "max", Var "X"]))                                 --Busca todas as cláusulas que unificam com likes(max, X)
 
 --Examples
 

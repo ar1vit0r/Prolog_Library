@@ -17,19 +17,19 @@ data Clause = Term :- [Term] | Simple Term | Term :\== Term
 
 type Prolog = [Clause]
 
--- Função que retorna a cabeça de uma cláusula
+-- retorna a cabeça de uma cláusula
 headOf :: Clause -> Term
 headOf (t :- _) = t
 headOf (Simple t) = t
 headOf (t :\== _) = t
 
--- Função que retorna o corpo de uma cláusula
+-- retorna o corpo de uma cláusula
 bodyOf :: Clause -> [Term]
 bodyOf (t :- ts) = ts       
 bodyOf (Simple t) = []
 bodyOf (t :\== t') = []
 
--- Função que verifica se dois termos unificam
+-- verifica se dois termos unificam
 match :: Term -> Term -> Bool
 match (Var x) _ = True
 match _ (Var x) = True
@@ -37,28 +37,28 @@ match (Atom x) (Atom y) = x == y
 match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)           --Verifica se os nomes são iguais e se os argumentos unificam
 match _ _ = False
 
--- Função que busca cláusulas que unificam com um termo - query myProg1 (Atom "prolog")
+-- busca cláusulas que unificam com um termo - query myProg1 (Atom "prolog")
 query :: Prolog -> Term -> [Clause]
 query prog term = [clause | clause <- prog, match term (headOf clause)]                             --Busca todas as cláusulas que unificam com o termo
 
--- Função que substitui variáveis em um termo
+-- substitui variáveis em um termo
 substitute :: (String, Term) -> Term -> Term
 substitute (x, t) (Var y) = if x == y then t else Var y                                             --Se a variável for igual a x, retorna o termo t, senão retorna a variável
 substitute (x, t) (Atom y) = Atom y
 substitute (x, t) (Func n args) = Func n (map (substitute (x, t)) args)                             --Aplica a substituição em todos os argumentos
 
--- Função que substitui variáveis em uma lista de termos
+-- substitui variáveis em uma lista de termos
 substituteAll :: [(String, Term)] -> Term -> Term
 substituteAll [] t = t
 substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')                              --Aplica a substituição em todos os termos da lista
 
--- Função que aplica uma substituição em uma cláusula
+-- aplica uma substituição em uma cláusula, retorna uma nova cláusula com a substituição aplicada
 applySubst :: (String, Term) -> Clause -> Clause
 applySubst (x, t) (t1 :- ts) = substitute (x, t) t1 :- map (substitute (x, t)) ts                   --Aplica a substituição na cabeça e no corpo
 applySubst (x, t) (Simple t1) = Simple (substitute (x, t) t1)                                       --Aplica a substituição no termo
 applySubst (x, t) (t1 :\== t2) = substitute (x, t) t1 :\== substitute (x, t) t2                     --Aplica a substituição nos dois termos
 
--- Função que retorna todas as substituições que unificam com um termo
+-- retorna todas as substituições que unificam com um termo
 unify :: Term -> Term -> Maybe [(String, Term)]
 unify (Var x) t = Just [(x, t)]
 unify t (Var x) = Just [(x, t)]
@@ -66,7 +66,7 @@ unify (Atom x) (Atom y) = if x == y then Just [] else Nothing                   
 unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se os nomes forem iguais, unifica as listas de argumentos
 unify _ _ = Nothing                                                                                  
 
--- Função que retorna todas as substituições que unificam com uma lista de termos
+-- retorna todas as substituições que unificam com uma lista de termos
 unifyList :: [Term] -> [Term] -> Maybe [(String, Term)]
 unifyList [] [] = Just []
 unifyList (t:ts) (t':ts') = case unify t t' of                                                        --Unifica os termos da lista
@@ -76,7 +76,7 @@ unifyList (t:ts) (t':ts') = case unify t t' of                                  
               Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
 unifyList _ _ = Nothing
 
---Função que interpreta uma clausula
+-- interpreta uma clausula, retorna uma lista de substituições que unificam com o termo passado como parâmetro
 interpret :: Prolog -> Term -> Maybe [(String, Term)]
 interpret prog term = case unify (headOf clause) term of                                              --Unifica a cabeça da cláusula com o termo
        Nothing -> Nothing
@@ -85,7 +85,7 @@ interpret prog term = case unify (headOf clause) term of                        
               Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
        where clause = head (query prog term)                                                          --Busca a primeira cláusula que unifica com o termo
 
--- Função que interpreta uma lista de cláusulas
+-- interpreta uma lista de cláusulas
 interpretList :: Prolog -> [Term] -> Maybe [(String, Term)]
 interpretList _ [] = Just []
 interpretList prog (t:ts) = case interpret prog t of                                                  --Interpreta o termo
@@ -94,17 +94,19 @@ interpretList prog (t:ts) = case interpret prog t of                            
               Nothing -> Nothing
               Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições                                   
 
+-- utiliza a lista de substituições para retornar o resultado da consulta
+result :: Maybe [(String, Term)] -> [Term]
+result Nothing = []
+result (Just subst) = [substituteAll subst (Var x) | (x, _) <- subst]                                --Aplica a substituição em todas as variáveis
+
+-- retorna o resultado da consulta
+queryResult :: Prolog -> Term -> [Term]
+queryResult prog term = result (interpret prog term)
+
 main :: IO ()
-main = print (interpret myProg1 (Func "likes" [Atom "max", Var "X"]))                                 --Busca todas as cláusulas que unificam com likes(max, X)
+main = print (queryResult myProg1 (Func "based" [Atom "prolog", Var "X"]))
 
 --Examples
-
-       -- parent(A, B, C)  Unify parent(kevin, henry, 30) 
-test1 :: Clause
-test1 = Simple (Func "parent" [Var "A", Var "B", Var "C"])
-
-test10 :: Clause
-test10 = Simple (Func "parent" [Atom "kevin", Atom "henry", Atom "30"])
 
        --Maribel Example page 171
 myProg1 :: Prolog

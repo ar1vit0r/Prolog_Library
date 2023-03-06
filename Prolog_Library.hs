@@ -52,12 +52,6 @@ substituteAll :: [(String, Term)] -> Term -> Term
 substituteAll [] t = t
 substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')                              --Aplica a substituição em todos os termos da lista
 
--- aplica uma substituição em uma cláusula, retorna uma nova cláusula com a substituição aplicada
-applySubst :: (String, Term) -> Clause -> Clause
-applySubst (x, t) (t1 :- ts) = substitute (x, t) t1 :- map (substitute (x, t)) ts                   --Aplica a substituição na cabeça e no corpo
-applySubst (x, t) (Simple t1) = Simple (substitute (x, t) t1)                                       --Aplica a substituição no termo
-applySubst (x, t) (t1 :\== t2) = substitute (x, t) t1 :\== substitute (x, t) t2                     --Aplica a substituição nos dois termos
-
 -- retorna todas as substituições que unificam com um termo
 unify :: Term -> Term -> Maybe [(String, Term)]
 unify (Var x) t = Just [(x, t)]
@@ -104,7 +98,7 @@ queryResult :: Prolog -> Term -> [Term]
 queryResult prog term = result (interpret prog term)
 
 main :: IO ()
-main = print (queryResult myProg1 (Func "based" [Atom "prolog", Var "X"]))
+main = print (queryResult myProg1 (Func "likes" [Atom "max", Var "X"]))
 
 --Examples
 

@@ -6,10 +6,6 @@
 --1 - Interpretar com Ghci:
 --2 - Digitar "main" e apertar enter no interpretador:
 
-import qualified Data.Maybe --Data.Maybe -> https://hackage.haskell.org/package/base-4.17.0.0/docs/Data-Maybe.html
-                            --Nothing serve para representar um valor que não existe (não é um valor válido) e Just x serve para representar um valor que existe (é um valor válido). 
-                            --Funciona como um tipo de dado que pode ser Nothing ou Just x, onde x é um valor válido.           
-
 data Term = Var String | Atom String | Func String [Term]
        deriving (Eq,Show)
 data Clause = Term :- [Term] | Simple Term | Term :\== Term
@@ -17,88 +13,90 @@ data Clause = Term :- [Term] | Simple Term | Term :\== Term
 
 type Prolog = [Clause]
 
--- retorna a cabeça de uma cláusula
+-- Retorna a cabeça de uma cláusula
 headOf :: Clause -> Term
 headOf (t :- _) = t
 headOf (Simple t) = t
 headOf (t :\== _) = t
 
--- retorna o corpo de uma cláusula
+-- Retorna o corpo de uma cláusula
 bodyOf :: Clause -> [Term]
-bodyOf (t :- ts) = ts       
+bodyOf (t :- ts) = ts
 bodyOf (Simple t) = []
-bodyOf (t :\== t') = []
+bodyOf (t :\== t') = []                   --será?
 
--- verifica se dois termos unificam
+-- Verifica se dois termos unificam
 match :: Term -> Term -> Bool
 match (Var x) _ = True
 match _ (Var x) = True
 match (Atom x) (Atom y) = x == y
-match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)           --Verifica se os nomes são iguais e se os argumentos unificam
+match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)           --Verifica se é a mesma função e se os argumentos podem ser unificados
 match _ _ = False
 
--- busca cláusulas que unificam com um termo - query myProg1 (Atom "prolog")
-query :: Prolog -> Term -> [Clause]
-query prog term = [clause | clause <- prog, match term (headOf clause)]                             --Busca todas as cláusulas que unificam com o termo
-
--- substitui variáveis em um termo
+-- Substitui variáveis em um termo
 substitute :: (String, Term) -> Term -> Term
 substitute (x, t) (Var y) = if x == y then t else Var y                                             --Se a variável for igual a x, retorna o termo t, senão retorna a variável
 substitute (x, t) (Atom y) = Atom y
-substitute (x, t) (Func n args) = Func n (map (substitute (x, t)) args)                             --Aplica a substituição em todos os argumentos
+substitute (x, t) (Func n args) = Func n (map (substitute (x, t)) args)                             --Aplica a substituição em toda a lista de argumentos
 
--- substitui variáveis em uma lista de termos
+-- Aplica a substituição em todos os termos da lista, retorna o termo substituído
 substituteAll :: [(String, Term)] -> Term -> Term
 substituteAll [] t = t
 substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')                              --Aplica a substituição em todos os termos da lista
 
--- retorna todas as substituições que unificam com um termo
+-- Retorna uma lista de tuplas contendo todas as substituições que unificam com um termo
 unify :: Term -> Term -> Maybe [(String, Term)]
 unify (Var x) t = Just [(x, t)]
 unify t (Var x) = Just [(x, t)]
-unify (Atom x) (Atom y) = if x == y then Just [] else Nothing                                        --Se os átomos forem iguais, retorna uma lista vazia
-unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se os nomes forem iguais, unifica as listas de argumentos
-unify _ _ = Nothing                                                                                  
+unify (Atom x) (Atom y) = if x == y then Just [] else Nothing
+unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se as funções tiverem o mesmo nome, tenta unificar as listas de argumentos
+unify _ _ = Nothing
 
--- retorna todas as substituições que unificam com uma lista de termos
+-- Retorna todas as substituições que unificam com uma lista de termos
 unifyList :: [Term] -> [Term] -> Maybe [(String, Term)]
 unifyList [] [] = Just []
-unifyList (t:ts) (t':ts') = case unify t t' of                                                        --Unifica os termos da lista
-       Nothing -> Nothing                                                                             --Se não unificou, retorna Nothing
-       Just subst -> case unifyList (map (substituteAll subst) ts) (map (substituteAll subst) ts') of --Se unificou, aplica a substituição e continua
+unifyList (t:ts) (t':ts') = case unify t t' of
+       Nothing -> Nothing
+       Just subst -> case unifyList (map (substituteAll subst) ts) (map (substituteAll subst) ts') of
               Nothing -> Nothing
-              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
+              Just subst' -> Just (subst ++ subst')
 unifyList _ _ = Nothing
 
--- interpreta uma clausula, retorna uma lista de substituições que unificam com o termo passado como parâmetro
+-- Interpret a clause, returning all the substitution that unifies the head of the clause with the term
 interpret :: Prolog -> Term -> Maybe [(String, Term)]
 interpret prog term = case unify (headOf clause) term of                                              --Unifica a cabeça da cláusula com o termo
        Nothing -> Nothing
-       Just subst -> case interpretList prog (map (substituteAll subst) (bodyOf clause)) of           --Aplica a substituição no corpo da cláusula e interpreta a lista
+       Just subst -> case interpretList prog (map (substituteAll subst) (bodyOf clause)) of           --Caso unifique, aplica a substituição no corpo da cláusula?
               Nothing -> Nothing
-              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições
-       where clause = head (query prog term)                                                          --Busca a primeira cláusula que unifica com o termo
+              Just subst' -> Just (subst ++ subst')
+       where clause = head (query prog term)                                                          --Busca a primeira cláusula que unifica com o termo?
+             query prog term = [clause | clause <- prog, match term (headOf clause)]                  --Verifica se a cabeça da cláusula? unifica com o termo para toda cláusula do programa e retorna a lista de cláusulas que unificam com o termo - -- busca cláusulas que unificam com um termo - query myProg1 (Atom "prolog")
 
--- interpreta uma lista de cláusulas
+-- Interpreta uma lista de cláusulas
 interpretList :: Prolog -> [Term] -> Maybe [(String, Term)]
 interpretList _ [] = Just []
-interpretList prog (t:ts) = case interpret prog t of                                                  --Interpreta o termo
+interpretList prog (t:ts) = case interpret prog t of
        Nothing -> Nothing
-       Just subst -> case interpretList prog (map (substituteAll subst) ts) of                        --Aplica a substituição e continua
+       Just subst -> case interpretList prog (map (substituteAll subst) ts) of
               Nothing -> Nothing
-              Just subst' -> Just (subst ++ subst')                                                   --Concatena as substituições                                   
+              Just subst' -> Just (subst ++ subst')
 
--- utiliza a lista de substituições para retornar o resultado da consulta
+-- Aplica a substituição em todas as variáveis da lista subst
 result :: Maybe [(String, Term)] -> [Term]
 result Nothing = []
-result (Just subst) = [substituteAll subst (Var x) | (x, _) <- subst]                                --Aplica a substituição em todas as variáveis
+result (Just subst) = [substituteAll subst (Var x) | (x, _) <- subst]                                --Aplica a substituição em todas as variáveis da lista subst
 
--- retorna o resultado da consulta
+-- Retorna o resultado da consulta
 queryResult :: Prolog -> Term -> [Term]
-queryResult prog term = result (interpret prog term)
+queryResult prog term = case interpret prog term of 
+     Nothing -> []                                        
+     Just subst -> [head (result (Just subst))]
 
 main :: IO ()
-main = print (queryResult myProg1 (Func "likes" [Atom "max", Var "X"]))
+main = print (queryResult myProg1 (Func "likes" [Var "X", Atom "prolog"]))
+
+--main :: IO ()
+--main = print (queryResult myProg21 (Func "parent" [Var "X", Atom "koos"]))
 
 --Examples
 
@@ -109,12 +107,21 @@ myProg1 = [
        Simple (Func "based" [Atom "haskell", Atom "maths"]),
        Simple (Func "likes" [Atom "max", Atom "logic"]),
        Simple (Func "likes" [Atom "claire", Atom "maths"]),
-       Func "likes" [Var "X", Var "P"] :- [Func "based" [Var "P", Var "Y"], Func "likes" [Var "X", Var "Y"]]]
+       Func "likes" [Var "X", Var "P"] :- [Func "based" [Var "P", Var "Y"], Func "likes" [Var "X", Var "Y"]]] 
 
 myProg2 :: Prolog
 myProg2 = [
        Simple (Func "parent" [Var "A", Var "B", Var "C"]),
        Simple (Func "parent" [Atom "kevin", Atom "henry", Atom "30"])]
+
+       --Modern Compiler Design Example page 613
+myProg21 :: Prolog
+myProg21 = [
+       Simple (Func "parent" [Atom "arne", Atom "james"]),
+       Simple (Func "parent" [Atom "arne", Atom "sachiko"]),
+       Simple (Func "parent" [Atom "koos", Atom "rivka"]),
+       Simple (Func "parent" [Atom "sachiko", Atom "rivka"]),
+       Simple (Func "parent" [Atom "truitje", Atom "koos"])]
 
        --Genealogic Tree Example
 myProg3 :: Prolog

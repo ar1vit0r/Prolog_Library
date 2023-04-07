@@ -8,9 +8,9 @@ import Data.List (nub)
 --1 - Interpretar com Ghci:
 --2 - Digitar "main" e apertar enter no interpretador:
 
-data Term = Var String | Atom String | Func String [Term]
+data Term = Var String | Atom String | Func String [Term] | Term :\== Term
        deriving (Eq,Show)
-data Clause = Term :- [Term] | Simple Term | Term :\== Term
+data Clause = Term :- [Term] | Simple Term
        deriving (Eq,Show)
 
 type Prolog = [Clause]
@@ -19,15 +19,11 @@ type Prolog = [Clause]
 headOf :: Clause -> Term
 headOf (t :- _) = t
 headOf (Simple t) = t
-headOf (t :\== _) = t
 
 -- Retorna o corpo de uma cláusula
 bodyOf :: Clause -> [Term]
 bodyOf (t :- ts) = ts
 bodyOf (Simple t) = []
-bodyOf (t :\== ts) = case unify t ts of
-       Nothing -> []
-       Just subst -> [substituteAll subst t]
 
 -- Verifica se dois termos unificam
 match :: Term -> Term -> Bool
@@ -48,8 +44,9 @@ substituteAll :: [(String, Term)] -> Term -> Term
 substituteAll [] t = t
 substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')                              --Aplica a substituição em todos os termos da lista.
 
+-- Gera uma lista de variáveis que não estão na lista de variáveis usadas
 freshVars :: [String] -> [String]
-freshVars usedVars = [name | i <- [1..], let name = "VAR" ++ show i, name `notElem` usedVars]
+freshVars usedVars = [name | i <- [1..], let name = "VAR" ++ show i, name `notElem` usedVars]       --Pode vir a causar problemas se o número de variáveis for muito grande(overhead).
 
 -- Retorna todas as variáveis em um termo
 vars :: Term -> [String]
@@ -59,18 +56,17 @@ vars (Func _ args) = nub $ concatMap vars args
 
 -- Retorna todas as substituições que unificam com um termo
 unify :: Term -> Term -> Maybe [(String, Term)]
-unify (Var x) (Var y) = Just [(x, Var y)]                                                            --Se as variáveis forem iguais, retorna a substituição.
-unify t (Var x) = unify (Var x) t
+unify (Var x) (Var y) = Just [(x, Var y)]
 unify (Var x) t
        | x `notElem` vars t = Just [(x, t)]                                                          --Se x não estiver em t, retorna a substituição.
        | otherwise = case freshVars (vars t) of                                                      --Se x já estiver em t, gera um novo nome de variável antes.
               [] -> Nothing 
               (y:_) -> Just [(y, t)]                                                                 --Usa o novo nome de variável para substituir x em t.
+unify t (Var x) = unify (Var x) t
 unify (Atom x) (Atom y) = if x == y then Just [] else Nothing
 unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se as funções tiverem o mesmo nome, tenta unificar as listas de argumentos.
 unify _ _ = Nothing
 
--- Retorna todas as substituições que unificam com uma lista de termos
 unifyList :: [Term] -> [Term] -> Maybe [(String, Term)]
 unifyList [] [] = Just []
 unifyList (t:ts) (t':ts') = case unify t t' of
@@ -80,7 +76,7 @@ unifyList (t:ts) (t':ts') = case unify t t' of
               Just subst' -> Just (subst ++ subst')
 unifyList _ _ = Nothing
 
--- Interpreta o programa, retorna todas substituições que unificam com o termo
+-- Interpreta o programa, percorre cada cláusula do programa e gera uma lista de substituições a serem realizadas.
 interpret :: Prolog -> Term -> Maybe [(String, Term)]
 interpret prog term = case unify (headOf clause) term of                                              --Unifica a cabeça da cláusula com o termo.
        Nothing -> Nothing
@@ -90,7 +86,6 @@ interpret prog term = case unify (headOf clause) term of                        
        where clause = head (query prog term)                                                          --Busca a primeira cláusula que unifica com o termo.
              query prog term = [clause | clause <- prog, match term (headOf clause)]                  --Verifica se a cabeça da cláusula? unifica com o termo para toda cláusula do programa e retorna a lista de cláusulas que unificam com o termo - -- busca cláusulas que unificam com um termo - query myProg1 (Atom "prolog").
 
--- Interpreta o programa, retorna todas substituições que unificam com uma lista de termos
 interpretList :: Prolog -> [Term] -> Maybe [(String, Term)]
 interpretList _ [] = Just []
 interpretList prog (t:ts) = case interpret prog t of
@@ -113,17 +108,17 @@ queryResult prog term = case interpret prog term of
 --main :: IO ()
 --main = print (queryResult myProg1 (Func "parent" [Var "X", Atom "koos"]))
 
---main :: IO ()
---main = print (queryResult myProg2 (Func "likes" [Var "X", Atom "prolog"]))
-
 main :: IO ()
-main = print (queryResult myProg3 (Func "irmao" [Var "X", Atom "ariel"]))
+main = print (queryResult myExample2 (Func "likes" [Var "X", Atom "prolog"]))
+
+--main :: IO ()
+--main = print (queryResult myExample3 (Func "irmao" [Var "X", Atom "ariel"]))
 
 --Examples
 
        --Modern Compiler Design Example page 613
-myProg1 :: Prolog
-myProg1 = [
+myExample1 :: Prolog
+myExample1 = [
        Simple (Func "parent" [Atom "arne", Atom "james"]),
        Simple (Func "parent" [Atom "arne", Atom "sachiko"]),
        Simple (Func "parent" [Atom "koos", Atom "rivka"]),
@@ -131,8 +126,8 @@ myProg1 = [
        Simple (Func "parent" [Atom "truitje", Atom "koos"])]
 
        --Maribel Example page 171
-myProg2 :: Prolog
-myProg2 = [
+myExample2 :: Prolog
+myExample2 = [
        Simple (Func "based" [Atom "prolog", Atom "logic"]),
        Simple (Func "based" [Atom "haskell", Atom "maths"]),
        Simple (Func "likes" [Atom "max", Atom "logic"]),
@@ -140,8 +135,8 @@ myProg2 = [
        Func "likes" [Var "X", Var "P"] :- [Func "based" [Var "P", Var "Y"], Func "likes" [Var "X", Var "Y"]]] 
 
        --Genealogic Tree Example
-myProg3 :: Prolog
-myProg3 = [
+myExample3 :: Prolog
+myExample3 = [
        Simple (Func "progenitor" [Atom "vitoria", Atom "joao"]),
        Simple (Func "progenitor" [Atom "olicio", Atom "joao"]),
        Simple (Func "progenitor" [Atom "vitoria", Atom "paulina"]),
@@ -162,53 +157,16 @@ myProg3 = [
        Simple (Func "sexo" [Atom "olicio", Atom "masculino"]),
        Simple (Func "sexo" [Atom "ariel", Atom "masculino"]),
        Simple (Func "sexo" [Atom "ari_vitor", Atom "masculino"]),
---irma
-       Simple (Func "irma" [Var "X", Var "Y"]),
-       Simple (Func "progenitor" [Var "A", Var "X"]),
-       Simple (Func "progenitor" [Var "A", Var "Y"]),
-       Var "X":\== Var "Y",
-       Simple (Func "sexo" [Var "X", Atom "feminino"]),
---irmao
-       Simple (Func "irmao" [Var "X", Var "Y"]),
-       Simple (Func "progenitor" [Var "A", Var "X"]),
-       Simple (Func "progenitor" [Var "A", Var "Y"]),
-       Var "X":\== Var "Y",
-       Simple (Func "sexo" [Var "X", Atom "masculino"]),
---descendente
-       Simple (Func "descendente" [Var "X", Var "Y"]),
-       Simple (Func "progenitor" [Var "X", Var "Y"]),
-       Simple (Func "descendente" [Var "X", Var "Y"]),
-       Simple (Func "progenitor" [Var "X", Var "A"]),
-       Simple (Func "descendente" [Var "A", Var "Y"]),
---avo
-       Simple (Func "avo" [Var "X", Var "Y"]),
-       Simple (Func "progenitor" [Var "X", Var "A"]),
-       Simple (Func "progenitor" [Var "A", Var "Y"]),
-       Simple (Func "sexo" [Var "X", Atom "masculino"]),
---mae
-       Simple (Func "mae" [Var "X", Var "Y"]),
-       Simple (Func "progenitor" [Var "X", Var "Y"]),
-       Simple (Func "sexo" [Var "X", Atom "feminino"]),
---pai
-       Simple (Func "pai" [Var "X", Var "Y"]),
-       Simple (Func "progenitor" [Var "X", Var "Y"]),
-       Simple (Func "sexo" [Var "X", Atom "masculino"]),
---tio
-       Simple (Func "tio" [Var "X", Var "Y"]),
-       Simple (Func "irmao" [Var "X", Var "A"]),
-       Simple (Func "progenitor" [Var "A", Var "Y"]),
---primo
-       Simple (Func "primo" [Var "X", Var "Y"]),
-       Simple (Func "irmao" [Var "A", Var "B"]),
-       Simple (Func "progenitor" [Var "A", Var "X"]),
-       Simple (Func "progenitor" [Var "B", Var "Y"]),
-       Var "X":\== Var "Y",
---primo
-       Simple (Func "primo" [Var "X", Var "Y"]),
-       Simple (Func "irma" [Var "A", Var "B"]),
-       Simple (Func "progenitor" [Var "A", Var "X"]),
-       Simple (Func "progenitor" [Var "B", Var "Y"]),
-       Var "X":\== Var "Y"]
+              Func "irma" [Var "X", Var "Y"] :- [Func "progenitor" [Var "A", Var "X"], Func "progenitor" [Var "A", Var "Y"], Var "X" :\== Var "Y", Func "sexo" [Var "X", Atom "feminino"]],
+             Func "irmao" [Var "X", Var "Y"] :- [Func "progenitor" [Var "A", Var "X"], Func "progenitor" [Var "A", Var "Y"], Var "X" :\== Var "Y", Func "sexo" [Var "X", Atom "masculino"]],
+       Func "descendente" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "Y"]],
+       Func "descendente" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "A"], Func "descendente" [Var "A", Var "Y"]],
+               Func "avo" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "A"], Func "progenitor" [Var "A", Var "Y"], Func "sexo" [Var "X", Atom "masculino"]],
+               Func "mae" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "Y"], Func "sexo" [Var "X", Atom "feminino"]],
+               Func "pai" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "Y"], Func "sexo" [Var "X", Atom "masculino"]],
+               Func "tio" [Var "X", Var "Y"] :- [Func "irmao" [Var "X", Var "A"], Func "progenitor" [Var "A", Var "Y"]],
+             Func "primo" [Var "X", Var "Y"] :- [Func "irmao" [Var "A", Var "B"], Func "progenitor" [Var "A", Var "X"], Func "progenitor" [Var "B", Var "Y"], Var "X" :\== Var "Y"],
+             Func "primo" [Var "X", Var "Y"] :- [Func "irma" [Var "A", Var "B"], Func "progenitor" [Var "A", Var "X"], Func "progenitor" [Var "B", Var "Y"], Var "X" :\== Var "Y"]]
 
 myProg21 :: Prolog
 myProg21 = [

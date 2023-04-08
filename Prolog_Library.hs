@@ -8,7 +8,7 @@ import Data.List (nub)
 --1 - Interpretar com Ghci:
 --2 - Digitar "main" e apertar enter no interpretador:
 
-data Term = Var String | Atom String | Func String [Term] | Term :\== Term
+data Term = Var String | Atom String | Func String [Term] | Term :\== Term          -- :\== necessita ser adicionado em match e unify para que o programa funcione corretamente.
        deriving (Eq,Show)
 data Clause = Term :- [Term] | Simple Term
        deriving (Eq,Show)
@@ -30,16 +30,20 @@ match :: Term -> Term -> Bool
 match (Var x) _ = True
 match _ (Var x) = True
 match (Atom x) (Atom y) = x == y
-match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)           --Verifica se é a mesma função e se os argumentos podem ser unificados.
+match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)           --Verifica se é a mesma função e se os argumentos podem ser unificados. 
+match (Var t :\== Var t') _ = False                             
 match _ _ = False
+
+query :: [Clause] -> Term -> [Clause]
+query prog term = [clause | clause <- prog, match term (headOf clause)]                  --Verifica se a cabeça da cláusula? unifica com o termo para toda cláusula do programa e retorna a lista de cláusulas que unificam com o termo - -- busca cláusulas que unificam com um termo. unify (headOf (head (query myExample3 (Func "irmao" [Var "X", Atom "ariel"])))) (Func "irmao" [Var "X", Atom "ariel"])
 
 -- Substitui variáveis em um termo
 substitute :: (String, Term) -> Term -> Term
 substitute (x, t) (Var y) = if x == y then t else Var y                                             --Se a variável for igual a x, retorna o termo t, senão retorna a variável.
 substitute (x, t) (Atom y) = Atom y
 substitute (x, t) (Func n args) = Func n (map (substitute (x, t)) args)                             --Aplica a substituição em toda a lista de argumentos.
+substitute (x, t) (Var a :\== Var b) = if x == a then Var b :\== Var b else Var a :\== Var b        --Substitui a variável em uma expressão de desigualdade.
 
--- Aplica a substituição em todos os termos da lista, retorna o termo substituído
 substituteAll :: [(String, Term)] -> Term -> Term
 substituteAll [] t = t
 substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')                              --Aplica a substituição em todos os termos da lista.
@@ -53,18 +57,20 @@ vars :: Term -> [String]
 vars (Var x) = [x]
 vars (Atom _) = []
 vars (Func _ args) = nub $ concatMap vars args
+vars (t :\== t') = nub $ vars t ++ vars t'
 
 -- Retorna todas as substituições que unificam com um termo
 unify :: Term -> Term -> Maybe [(String, Term)]
+unify (Atom x) (Atom y) = if x == y then Just [] else Nothing
+unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se as funções tiverem o mesmo nome, tenta unificar as listas de argumentos.
+unify (Var t :\== Var t') _ = if t == t' then Just[] else Nothing
 unify (Var x) (Var y) = Just [(x, Var y)]
+unify t (Var x) = unify (Var x) t
 unify (Var x) t
        | x `notElem` vars t = Just [(x, t)]                                                          --Se x não estiver em t, retorna a substituição.
        | otherwise = case freshVars (vars t) of                                                      --Se x já estiver em t, gera um novo nome de variável antes.
               [] -> Nothing 
               (y:_) -> Just [(y, t)]                                                                 --Usa o novo nome de variável para substituir x em t.
-unify t (Var x) = unify (Var x) t
-unify (Atom x) (Atom y) = if x == y then Just [] else Nothing
-unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se as funções tiverem o mesmo nome, tenta unificar as listas de argumentos.
 unify _ _ = Nothing
 
 unifyList :: [Term] -> [Term] -> Maybe [(String, Term)]
@@ -84,7 +90,6 @@ interpret prog term = case unify (headOf clause) term of                        
               Nothing -> Nothing
               Just subst' -> Just (subst ++ subst')
        where clause = head (query prog term)                                                          --Busca a primeira cláusula que unifica com o termo.
-             query prog term = [clause | clause <- prog, match term (headOf clause)]                  --Verifica se a cabeça da cláusula? unifica com o termo para toda cláusula do programa e retorna a lista de cláusulas que unificam com o termo - -- busca cláusulas que unificam com um termo - query myProg1 (Atom "prolog").
 
 interpretList :: Prolog -> [Term] -> Maybe [(String, Term)]
 interpretList _ [] = Just []
@@ -105,14 +110,14 @@ queryResult prog term = case interpret prog term of
        Nothing -> []                                        
        Just subst -> [head (result (Just subst))]
 
---main :: IO ()
---main = print (queryResult myProg1 (Func "parent" [Var "X", Atom "koos"]))
+main1 :: IO ()
+main1 = print (queryResult myExample1 (Func "parent" [Var "X", Atom "koos"]))
 
-main :: IO ()
-main = print (queryResult myExample2 (Func "likes" [Var "X", Atom "prolog"]))
+main2 :: IO ()
+main2 = print (queryResult myExample2 (Func "likes" [Var "X", Atom "prolog"]))
 
---main :: IO ()
---main = print (queryResult myExample3 (Func "irmao" [Var "X", Atom "ariel"]))
+main3 :: IO ()
+main3 = print (queryResult myExample3 (Func "irmao" [Var "X", Atom "ariel"]))
 
 --Examples
 
@@ -167,8 +172,3 @@ myExample3 = [
                Func "tio" [Var "X", Var "Y"] :- [Func "irmao" [Var "X", Var "A"], Func "progenitor" [Var "A", Var "Y"]],
              Func "primo" [Var "X", Var "Y"] :- [Func "irmao" [Var "A", Var "B"], Func "progenitor" [Var "A", Var "X"], Func "progenitor" [Var "B", Var "Y"], Var "X" :\== Var "Y"],
              Func "primo" [Var "X", Var "Y"] :- [Func "irma" [Var "A", Var "B"], Func "progenitor" [Var "A", Var "X"], Func "progenitor" [Var "B", Var "Y"], Var "X" :\== Var "Y"]]
-
-myProg21 :: Prolog
-myProg21 = [
-       Simple (Func "parent" [Var "A", Var "B", Var "C"]),
-       Simple (Func "parent" [Atom "kevin", Atom "henry", Atom "30"])]

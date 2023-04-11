@@ -14,6 +14,7 @@ data Clause = Term :- [Term] | Simple Term
        deriving (Eq,Show)
 
 type Prolog = [Clause]
+type Subst = Maybe [(String, Term)]
 
 -- Retorna a cabeça de uma cláusula
 headOf :: Clause -> Term
@@ -27,15 +28,12 @@ bodyOf (Simple t) = []
 
 -- Verifica se dois termos unificam
 match :: Term -> Term -> Bool
+match (Atom x) (Atom y) = x == y
+match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)          --Verifica se é a mesma função e se os argumentos podem ser unificados. 
 match (Var x) _ = True
 match _ (Var x) = True
-match (Atom x) (Atom y) = x == y
-match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)           --Verifica se é a mesma função e se os argumentos podem ser unificados. 
 match (Var t :\== Var t') _ = False                             
 match _ _ = False
-
-query :: [Clause] -> Term -> [Clause]
-query prog term = [clause | clause <- prog, match term (headOf clause)]                  --Verifica se a cabeça da cláusula? unifica com o termo para toda cláusula do programa e retorna a lista de cláusulas que unificam com o termo - -- busca cláusulas que unificam com um termo. unify (headOf (head (query myExample3 (Func "irmao" [Var "X", Atom "ariel"])))) (Func "irmao" [Var "X", Atom "ariel"])
 
 -- Substitui variáveis em um termo
 substitute :: (String, Term) -> Term -> Term
@@ -60,10 +58,10 @@ vars (Func _ args) = nub $ concatMap vars args
 vars (t :\== t') = nub $ vars t ++ vars t'
 
 -- Retorna todas as substituições que unificam com um termo
-unify :: Term -> Term -> Maybe [(String, Term)]
+unify :: Term -> Term -> Subst
 unify (Atom x) (Atom y) = if x == y then Just [] else Nothing
 unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se as funções tiverem o mesmo nome, tenta unificar as listas de argumentos.
-unify (Var t :\== Var t') _ = if t == t' then Just[] else Nothing
+unify (Var t :\== Var t') _ = if t == t' then Just [] else Nothing
 unify (Var x) (Var y) = Just [(x, Var y)]
 unify t (Var x) = unify (Var x) t
 unify (Var x) t
@@ -73,7 +71,7 @@ unify (Var x) t
               (y:_) -> Just [(y, t)]                                                                 --Usa o novo nome de variável para substituir x em t.
 unify _ _ = Nothing
 
-unifyList :: [Term] -> [Term] -> Maybe [(String, Term)]
+unifyList :: [Term] -> [Term] -> Subst
 unifyList [] [] = Just []
 unifyList (t:ts) (t':ts') = case unify t t' of
        Nothing -> Nothing
@@ -83,15 +81,16 @@ unifyList (t:ts) (t':ts') = case unify t t' of
 unifyList _ _ = Nothing
 
 -- Interpreta o programa, percorre cada cláusula do programa e gera uma lista de substituições a serem realizadas.
-interpret :: Prolog -> Term -> Maybe [(String, Term)]
+interpret :: Prolog -> Term -> Subst
 interpret prog term = case unify (headOf clause) term of                                              --Unifica a cabeça da cláusula com o termo.
        Nothing -> Nothing
        Just subst -> case interpretList prog (map (substituteAll subst) (bodyOf clause)) of           --Caso unifique, aplica a substituição no corpo da cláusula.
               Nothing -> Nothing
               Just subst' -> Just (subst ++ subst')
        where clause = head (query prog term)                                                          --Busca a primeira cláusula que unifica com o termo.
+             query prog term = [clause | clause <- prog, match term (headOf clause)]                  --Verifica se a cabeça da cláusula? unifica com o termo para toda cláusula do programa e retorna a lista de cláusulas que unificam com o termo - -- busca cláusulas que unificam com um termo. unify (headOf (head (query myExample3 (Func "irmao" [Var "X", Atom "ariel"])))) (Func "irmao" [Var "X", Atom "ariel"])
 
-interpretList :: Prolog -> [Term] -> Maybe [(String, Term)]
+interpretList :: Prolog -> [Term] -> Subst
 interpretList _ [] = Just []
 interpretList prog (t:ts) = case interpret prog t of
        Nothing -> Nothing
@@ -100,7 +99,7 @@ interpretList prog (t:ts) = case interpret prog t of
               Just subst' -> Just (subst ++ subst')
 
 -- Aplica a substituição em todas as variáveis da lista subst
-result :: Maybe [(String, Term)] -> [Term]
+result :: Subst -> [Term]
 result Nothing = []
 result (Just subst) = [substituteAll subst (Var x) | (x, _) <- subst]                                --Aplica a substituição em todas as variáveis da lista subst.
 

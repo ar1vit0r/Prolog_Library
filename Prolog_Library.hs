@@ -29,10 +29,10 @@ bodyOf (Simple t) = []
 -- Verifica se dois termos unificam
 match :: Term -> Term -> Bool
 match (Atom x) (Atom y) = x == y
-match (Func n1 args1) (Func n2 args2) = n1 == n2 && all (uncurry match) (zip args1 args2)          --Verifica se é a mesma função e se os argumentos podem ser unificados. 
 match (Var x) _ = True
 match _ (Var x) = True
-match (Var t :\== Var t') _ = False                             
+match (Var t :\== Var t') _ = False
+match (Func n1 args1) (Func n2 args2) = n1 == n2 && length args1 == length args2 && all (uncurry match) (zip args1 args2)          --Verifica se é a mesma função e se os argumentos podem ser unificados.                       
 match _ _ = False
 
 -- Substitui variáveis em um termo
@@ -59,16 +59,18 @@ vars (t :\== t') = nub $ vars t ++ vars t'
 
 -- Retorna todas as substituições que unificam com um termo
 unify :: Term -> Term -> Subst
-unify (Atom x) (Atom y) = if x == y then Just [] else Nothing
-unify (Func n1 args1) (Func n2 args2) = if n1 == n2 then unifyList args1 args2 else Nothing          --Se as funções tiverem o mesmo nome, tenta unificar as listas de argumentos.
+unify (Atom x) (Atom y) = if x == y then Just [] else Nothing                                        --Se forem átomos, verifica se são iguais e retorna a substituição vazia.
+unify (Var x) (Atom y) = Just [(x, Atom y)]                                                          --Se forem uma variável e um átomo, retorna a substituição.
+unify (Atom x) (Var y) = Just [(y, Atom x)]                                                          --Se forem um átomo e uma variável, retorna a substituição.
+unify (Var x) (Var y) = Just [(x, Var y)]                                                            --Se forem variáveis, retorna a substituição, pois variaveis sempre podem ser unificadas.
 unify (Var t :\== Var t') _ = if t == t' then Just [] else Nothing
-unify (Var x) (Var y) = Just [(x, Var y)]
 unify t (Var x) = unify (Var x) t
 unify (Var x) t
        | x `notElem` vars t = Just [(x, t)]                                                          --Se x não estiver em t, retorna a substituição.
        | otherwise = case freshVars (vars t) of                                                      --Se x já estiver em t, gera um novo nome de variável antes.
               [] -> Nothing 
               (y:_) -> Just [(y, t)]                                                                 --Usa o novo nome de variável para substituir x em t.
+unify (Func n1 args1) (Func n2 args2) = if n1 == n2 && length args1 == length args2 then unifyList args1 args2 else Nothing--Se as funções tiverem o mesmo nomee o mesmo número de argumentos, tenta unificar as listas de argumentos.
 unify _ _ = Nothing
 
 unifyList :: [Term] -> [Term] -> Subst
@@ -138,7 +140,7 @@ myExample2 = [
        Simple (Func "likes" [Atom "claire", Atom "maths"]),
        Func "likes" [Var "X", Var "P"] :- [Func "based" [Var "P", Var "Y"], Func "likes" [Var "X", Var "Y"]]] 
 
-       --Genealogic Tree Example
+       --Genealogic Tree Example --- olhar maribel, tudo que era x, vira Z, nas substituições
 myExample3 :: Prolog
 myExample3 = [
        Simple (Func "progenitor" [Atom "vitoria", Atom "joao"]),

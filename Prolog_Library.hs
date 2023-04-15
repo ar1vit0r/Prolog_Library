@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
-import Data.List (nub)
+import Data.List (nub, permutations)
 
 -- Ari Vitor da Silva Lazzarotto
 
@@ -46,60 +46,81 @@ substituteAll :: [(String, Term)] -> Term -> Term
 substituteAll [] t = t
 substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')                              --Aplica a substituição em todos os termos da lista.
 
--- Gera uma lista de variáveis que não estão na lista de variáveis usadas
-freshVars :: [String] -> [String]
-freshVars usedVars = [name | i <- [1..], let name = "VAR" ++ show i, name `notElem` usedVars]       --Pode vir a causar problemas se o número de variáveis for muito grande(overhead).
-
--- Retorna todas as variáveis em um termo
-vars :: Term -> [String]
-vars (Var x) = [x]
-vars (Atom _) = []
-vars (Func _ args) = nub $ concatMap vars args
-vars (t :\== t') = nub $ vars t ++ vars t'
-
--- Retorna todas as substituições que unificam com um termo
+-- Retorna todas as substituições que unificam com um termo.
 unify :: Term -> Term -> Subst
 unify (Atom x) (Atom y) = if x == y then Just [] else Nothing                                        --Se forem átomos, verifica se são iguais e retorna a substituição vazia.
-unify (Var x) (Atom y) = Just [(x, Atom y)]                                                          --Se forem uma variável e um átomo, retorna a substituição.
-unify (Atom x) (Var y) = Just [(y, Atom x)]                                                          --Se forem um átomo e uma variável, retorna a substituição.
 unify (Var x) (Var y) = Just [(x, Var y)]                                                            --Se forem variáveis, retorna a substituição, pois variaveis sempre podem ser unificadas.
-unify (Var x) t
-       | x `notElem` vars t = Just [(x, t)]                                                          --Se x não estiver em t, retorna a substituição.
-       | otherwise = case freshVars (vars t) of                                                      --Se x já estiver em t, gera um novo nome de variável antes.
-              [] -> Nothing
-              (y:_) -> Just [(y, t)]                                                                 --Usa o novo nome de variável para substituir x em t.
-unify t (Var y)
-       | y `notElem` vars t = Just [(y, t)]
-       | otherwise = case freshVars (vars t) of
-              [] -> Nothing
-              (x:_) -> Just [(x, t)]
+unify t (Var x) = Just [(x, t)]                                                                      --Se o termo for uma variável, retorna a substituição.
+unify (Var x) t = Just [(x, t)]                                                                      --Se o termo for uma variável, retorna a substituição.
 unify (Var t :\== Var t') _ = if t == t' then Just [] else Nothing
 unify (Func n1 args1) (Func n2 args2) = if n1 == n2 && length args1 == length args2 then unifyList args1 args2 else Nothing--Se as funções tiverem o mesmo nomee o mesmo número de argumentos, tenta unificar as listas de argumentos.
 unify _ _ = Nothing
 
-unifyList :: [Term] -> [Term] -> Subst
-unifyList [] [] = Just []
-unifyList (t:ts) (t':ts') = case unify t t' of
-       Nothing -> Nothing
-       Just subst -> case unifyList (map (substituteAll subst) ts) (map (substituteAll subst) ts') of
-              Nothing -> Nothing
-              Just subst' -> Just (subst ++ subst')
-unifyList _ _ = Nothing
-
--- Interpreta o programa, percorre cada cláusula do programa e gera uma lista de substituições a serem realizadas.
+-- Interpreta o programa, percorre cada cláusula e gera uma lista de substituições a serem realizadas.
 interpret :: Prolog -> Term -> Subst
 interpret prog term = case query prog term of
        [] -> Nothing
-       (clause:_) -> case unify (headOf clause) term of
+       (clause:_) -> case unifyWithAlphaConversion (headOf clause) term [] of
               Nothing -> Nothing
               Just subst -> case interpretList prog (map (substituteAll subst) (bodyOf clause)) of
                      Nothing -> Nothing
                      Just subst' -> Just (subst ++ subst')
        where query prog term = [clause | clause <- prog, match term (headOf clause)]
 
+-- Alpha-conversion
+interpretWithAlphaConversion :: Prolog -> Term -> [String] -> Subst
+interpretWithAlphaConversion prog term usedVars =
+       let prog' = applyAlphaConversion prog
+           term' = alphaConversion term usedVars
+       in interpret prog' term'
+
+unifyWithAlphaConversion :: Term -> Term -> [String] -> Subst
+unifyWithAlphaConversion t1 t2 usedVars =
+       let t1' = alphaConversion t1 usedVars
+           t2' = alphaConversion t2 usedVars
+       in unify t1' t2'
+
+generateNewVarName :: String -> [String] -> String
+generateNewVarName x usedVars =
+       let x' = x ++ "'"
+       in if x' `elem` usedVars then generateNewVarName x' usedVars else x'
+
+-- alpha-conversion - Gera sempre uma nova variável para substituir a variável da consulta. Ex: X = Y, gera uma nova variável Z e substitui todas as ocorrências de X por Z.
+alphaConversion :: Term -> [String] -> Term
+alphaConversion (Atom x) usedVars = Atom x
+alphaConversion (Var x) usedVars = Var (generateNewVarName x usedVars)
+alphaConversion (Func n args) usedVars =
+       let args' = map (`alphaConversion` usedVars) args
+       in Func n args'
+alphaConversion t _ = t
+
+-- Aplica a alpha-conversion em todas as cláusulas de um programa Prolog.
+applyAlphaConversion :: Prolog -> Prolog
+applyAlphaConversion = map applyAlphaConversionClause
+
+-- Aplica a alpha-conversion em uma cláusula.
+applyAlphaConversionClause :: Clause -> Clause
+applyAlphaConversionClause (Simple t) = Simple (applyAlphaConversionTerm t)
+applyAlphaConversionClause (head :- body) = applyAlphaConversionTerm head :- map applyAlphaConversionTerm body
+
+-- Aplica a alpha-conversion em um termo.
+applyAlphaConversionTerm :: Term -> Term
+applyAlphaConversionTerm t = alphaConversion t []
+-- end alpha-conversion
+
+unifyList :: [Term] -> [Term] -> Subst
+unifyList [] [] = Just []
+unifyList (t:ts) (t':ts') = case unifyWithAlphaConversion t t' [] of
+       Nothing -> Nothing
+       Just subst -> case unifyList (map (substituteAll subst) ts) (map (substituteAll subst) ts') of
+              Nothing -> Nothing
+              Just subst' -> Just (subst ++ subst')
+unifyList _ _ = Nothing
+
+-- Interpreta 
 interpretList :: Prolog -> [Term] -> Subst
 interpretList _ [] = Just []
-interpretList prog (t:ts) = case interpret prog t of
+interpretList prog (t:ts) = case interpretWithAlphaConversion prog t [] of
        Nothing -> Nothing
        Just subst -> case interpretList prog (map (substituteAll subst) ts) of
               Nothing -> Nothing
@@ -110,17 +131,11 @@ result :: Subst -> [Term]
 result Nothing = []
 result (Just subst) = [substituteAll subst (Var x) | (x, _) <- subst]                                --Aplica a substituição em todas as variáveis da lista subst.
 
--- Retorna o resultado da consulta, caso não encontrar, inverte a lista de argumentos do termo e tenta novamente.
+-- Retorna o resultado da consulta, caso não encontrar, tenta novamente para todas permutas da lista.
 queryResult :: Prolog -> Term -> [Term]
-queryResult prog term = case interpret prog term of
+queryResult prog term = case interpretWithAlphaConversion prog term [] of
+       Nothing -> []
        Just subst -> [head (result (Just subst))]
-       Nothing -> case term of
-              Func n xs -> queryResultAux prog (Func n (reverse xs))                                 --Inverte a lista de argumentos do termo, necessita ser uma função auxiliar para não entrar em loop infinito.
-              _ -> []
-       where  
-              queryResultAux prog term = case interpret prog term of  
-                     Just subst -> [head (result (Just subst))]
-                     Nothing -> []
 
 main1 :: IO ()
 main1 = print (queryResult myExample1 (Func "parent" [Var "X", Atom "koos"]))

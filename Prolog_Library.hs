@@ -5,7 +5,18 @@ import Data.List (nub, permutations) -- nub remove elementos duplicados de uma l
 
 -- https://downloads.haskell.org/~ghc/7.2.1/docs/html/users_guide/pragmas.html - 7.13.5.1. INLINE pragma - GHC User's Guide
 
--- bug com a função mae e avo, porém pai funciona o.O (não sei o motivo) -- mae de janeti é a janeti? lul
+-- bug com a função mae e avo, porém pai funciona o.O (não sei o motivo) -- mae de janeti é a janeti? lul descendente masculino funciona mas feminino nao. problema é com qualquer caso fora o default(que no caso é o masculino?)
+-- bug com multiplos matches, retorna sómente o primeiro, sem realizar as outras clausulas
+
+-- muda exemplo figura 4.
+
+-- problema esta na função interpret, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
+-- problema esta na função unify, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
+-- problema esta na função query, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
+-- problema esta na função match, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
+-- problema é a restrição da variavel ser do sexo tal, testa com o masculino e ja retorna, sem testar os proximos, no caso, o feminino.
+
+-- o masculino funciona pq ele é unificado primeiro, e o feminino não, pois ele é unificado depois, e o masculino ja foi unificado, então não é testado.??????????????????
 
 data Term = Var String | Atom String | Func String [Term]
        deriving (Eq,Show)
@@ -16,27 +27,32 @@ type Prolog = [Clause]
 type Subst = Maybe [(String, Term)]
 
 -- Retorna o resultado da consulta, caso não encontrar, tenta novamente para todas permutas da lista.
-queryResult :: Prolog -> Term -> [Term]
+queryResult :: Prolog -> Term -> [(String,Term)]
 queryResult prog term = case interpret prog (alphaConvert term) of
        Nothing -> case alphaConvert term of
-              Func n xs -> case permutations xs of 
+              Func n xs -> case permutations xs of
                      [] -> []
-                     (x:xs) -> queryResultAux prog (Func n x) ++ queryResultAux prog (Func n (head xs))
+                     (permutation:permutations) -> undoAlphaConvert (filterVars (permuteAux prog (Func n permutation) ++ permuteAux prog (Func n (head permutations))) (varsInTerm (alphaConvert term)))
               _ -> []
-       Just solution -> [head (result (Just solution))]
+       Just solution -> undoAlphaConvert (filterVars (result (Just solution)) (varsInTerm (alphaConvert term)))
        where
+              varsInTerm (Atom _) = []
+              varsInTerm (Var x) = [x]
+              varsInTerm (Func _ args) = concatMap varsInTerm args
+              filterVars result vars = [(x, t) | (x, t) <- result, x `elem` vars]                                         --Remove as variáveis que não estão na consulta.
               alphaConvert (Func n args) = Func n (map alphaConvert args)
-              alphaConvert (Var x) = Var (x ++ head [newName | i <- [1..], let newName = "!@#$%%^&*_+VAR" ++ show i] )
-              alphaConvert (Atom x) = Atom x 
+              alphaConvert (Var x) = Var (x ++ "øVAR")
+              alphaConvert (Atom x) = Atom x
+              undoAlphaConvert xs = [(takeWhile (/= 'ø') x, t) | (x, t) <- xs]                                            --Desfaz a conversão alfa para exibir pro usuário.
               result Nothing = []
-              result (Just subst) = [substituteAll subst (Var x) | (x, _) <- subst]                                 --Desencapsula o Maybe e retorna o resultado.
-              queryResultAux prog term = case interpret prog (alphaConvert term) of
+              result (Just subst) = [( x, substituteAll subst (Var x)) | (x, _) <- subst]                                 --Desencapsula o Maybe e retorna o resultado.
+              permuteAux prog term = case interpret prog term of
                      Nothing -> []
-                     Just subst -> [head (result (Just subst))]
+                     Just subst -> result (Just subst)
 
 -- Percorre cada cláusula que der match com o termo da consulta e aplica a unificação.
 interpret :: Prolog -> Term -> Subst
-interpret prog term = case query prog term of
+interpret prog term = case query of
        [] -> Nothing
        (clause:_) -> case unify (headOf clause) term of
               Nothing -> Nothing
@@ -54,7 +70,7 @@ interpret prog term = case query prog term of
               headOf (Simple t) = t
               bodyOf (t :- ts) = ts
               bodyOf (Simple t) = []
-              query prog term = [clause | clause <- prog, match term (headOf clause)]
+              query = [clause | clause <- prog, match term (headOf clause)] -- unify (headOf(head (query myExample (Func "mae" [Atom "janeti", Var "Q"])))) (Func "mae" [Atom "janeti", Var "Q"])
                      where
                             match (Atom x) (Atom y) = x == y
                             match (Var x) _ = True
@@ -89,16 +105,19 @@ substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')          
 ------------------------------------------------------------------------
 
 main :: IO ()
-main = print (queryResult myExample (Func "mae" [Var "Q", Atom "janeti"]))              -- consulta pai funciona
+main = print (queryResult myExample (Func "pai" [Atom "ari_vitor", Var "Q"]))              -- consulta pai funciona o.O, mãe de janeti retorna a propria janeti pq? 
 
 main1 :: IO ()
 main1 = print (queryResult myExample1 (Func "consulta" [Var "Q"]))
 
 main2 :: IO ()
-main2 = print (queryResult myExample2 (Func "parent" [Var "X", Atom "james"]))
+main2 = print (queryResult myExample2 (Func "parent" [Var "X", Atom "arne"]))
 
 main3 :: IO ()
 main3 = print (queryResult myExample3 (Func "likes" [Atom "prolog", Var "Y"]))
+
+main5 :: IO ()
+main5 = print (queryResult myExample5 (Func "gives" [Var "ALGUEM1", Atom "chocolate", Var "ALGUEM2"]))
 
 --------------------------------
 --Exemplo de programa Prolog----
@@ -113,6 +132,8 @@ myExample = [
        Simple (Func "progenitor" [Atom "paulina", Atom "janeti"]),
        Simple (Func "progenitor" [Atom "ari", Atom "ari_vitor"]),
        Simple (Func "progenitor" [Atom "janeti", Atom "ari_vitor"]),
+       Simple (Func "progenitor" [Atom "ari", Atom "ariel"]),
+       Simple (Func "progenitor" [Atom "janeti", Atom "ariel"]),
        Simple (Func "sexo" [Atom "paulina", Atom "feminino"]),
        Simple (Func "sexo" [Atom "vitoria", Atom "feminino"]),
        Simple (Func "sexo" [Atom "janeti", Atom "feminino"]),
@@ -120,6 +141,7 @@ myExample = [
        Simple (Func "sexo" [Atom "joao", Atom "masculino"]),
        Simple (Func "sexo" [Atom "olicio", Atom "masculino"]),
        Simple (Func "sexo" [Atom "ari_vitor", Atom "masculino"]),
+       Simple (Func "sexo" [Atom "ariel", Atom "masculino"]),
        Func "descendente" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "Y"]],
        Func "descendente" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "A"], Func "descendente" [Var "A", Var "Y"]],
                Func "avo" [Var "X", Var "Y"] :- [Func "progenitor" [Var "X", Var "A"], Func "progenitor" [Var "A", Var "Y"], Func "sexo" [Var "X", Atom "masculino"]],
@@ -181,3 +203,7 @@ myExample4 = [
        Simple (Func "teaches" [Atom "collins", Atom "csc171"]),
        Simple (Func "teaches" [Atom "juniper", Atom "csc134"]),
        Func "professor" [Var "X", Var "Y"] :- [Func "teaches" [Var "X", Var "Z"], Func "studies" [Var "Y", Var "Z"]]]
+
+myExample5 :: Prolog
+myExample5 = [
+       Simple (Func "gives" [Atom "john", Atom "chocolate", Atom "jane"])]

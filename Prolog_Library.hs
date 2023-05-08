@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
-import Data.Maybe (mapMaybe) -- mapMaybe funciona igual o map, porém, se o resultado for Nothing, ele não é adicionado na lista.
+import Data.Maybe (mapMaybe)
 
 data Term = Var String | Atom String | Func String [Term]
        deriving (Eq,Show)

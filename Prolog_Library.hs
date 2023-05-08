@@ -1,27 +1,14 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
-import Data.List (nub, permutations) -- nub remove elementos duplicados de uma lista, permutations retorna todas as permutações de uma lista.
-import Data.Maybe
+import Data.List (nub, permutations) -- nub remove elementos duplicados de uma lista, permutations retorna uma lista com todas as permutações da lista desejada.
+import Data.Maybe (mapMaybe) -- mapMaybe funciona igual o map, porém, se o resultado for Nothing, ele não é adicionado na lista.
 
--- https://downloads.haskell.org/~ghc/7.2.1/docs/html/users_guide/pragmas.html - 7.13.5.1. INLINE pragma - GHC User's Guide
+-------------------------------------- muda exemplo figura 4.
+-------------------------------------- consultas nos apendices, decidir os exemplos que serão usados. tentar fazer o ultimo funciopnar. cuidar para nao ficarem cortados
+-------------------------------------- na parte da interpret, cuidar o backtrack------------ para que ele não retorne o mesmo resultado, e sim o proximo.
 
--- achei a malditaaaaaaaaa  -  bug com a função mae e avo, porém pai funciona o.O -- mae de janeti é a janeti? lul descendente masculino funciona mas feminino nao. problema é com qualquer caso fora o default(que no caso é o masculino?)
--- bug com multiplos matches, retorna sómente o primeiro, sem realizar as outras clausulas
-
--- problema esta na função interpret, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
--- problema esta na função unify, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
--- problema esta na função query, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
--- problema esta na função match, pois ela não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente.?
-
--- problema é a restrição da variavel ser do sexo tal, testa com o masculino e ja retorna, sem testar os proximos, no caso, o feminino.
--- o masculino funciona pq ele é unificado primeiro, e o feminino não, pois ele é unificado depois, e o masculino ja foi unificado, então não é testado.??????????????????
---humm, acho que são dois coelhos com uma cajadada emm, o problema é que a função interpret não esta retornando o resultado correto, pois ela não esta realizando a unificação corretamente. 
--- ...Esta unificando apenas o primeiro match, e não todos os matches. nem olha as outras clausulas. (não sei o motivo)
-
---colocar print das explicações das funçoes no apendice?.
--- falar sobre listas em haskell, e suas funções, como map, filter, foldr, foldl, etc e vantagens de usar elas?.
--- muda exemplo figura 4.
+--trabalhos futuros, problemas, caso n resolver, explicar pq n resolveu, e como resolveria, e o pq de n ter resolvido.
 
 data Term = Var String | Atom String | Func String [Term]
        deriving (Eq,Show)
@@ -31,66 +18,59 @@ data Clause = Term :- [Term] | Simple Term
 type Prolog = [Clause]
 type Subst = Maybe [(String, Term)]
 
--- Retorna o resultado da consulta, caso não encontrar, tenta novamente para todas permutas da lista.
+-- Retorna o resultado da consulta.
 queryResult :: Prolog -> Term -> [(String, String)]
 queryResult prog term = case interpret prog (renamed term) of
-       Nothing -> case renamed term of
-              Func n xs -> case permutations xs of
-                     [] -> []
-                     (permutation:permutations) -> undoRenamed (filterVars (permuteAux prog (Func n permutation) ++ permuteAux prog (Func n (head permutations))) (varsInTerm (renamed term)))
-              _ -> []
+       Nothing -> []
        Just solution -> undoRenamed (filterVars (result (Just solution)) (varsInTerm (renamed term)))
        where
+              filterVars result vars = [(x, t) | (x, t) <- result, x `elem` vars]                                    --Remove as variáveis que não estão na consulta.
               varsInTerm (Atom _) = []
               varsInTerm (Var x) = [x]
               varsInTerm (Func _ args) = concatMap varsInTerm args
-              filterVars result vars = [(x, t) | (x, t) <- result, x `elem` vars]                                    --Remove as variáveis que não estão na consulta.
               renamed (Func n args) = Func n (map renamed args)
               renamed (Var x) = Var (x ++ "øVAR")
               renamed (Atom x) = Atom x
               undoRenamed xs = [(takeWhile (/= 'ø') x, t) | (x, t) <- xs]                                            --Desfaz a conversão alfa para exibir pro usuário.
               result Nothing = []
-              result (Just subst) = [(x, extractAtom (substituteAll subst (Var x))) | (x, _) <- subst]              --Desencapsula o Maybe e retorna o resultado.
-                     where
-                            extractAtom (Atom x) = x
-              permuteAux p t = case interpret p t of
-                     Nothing -> []
-                     Just subst -> result (Just subst)
+              result (Just subst) = case subst of
+                     [] -> []
+                     ((x,t):rest) -> if hasTooManyOccurrences subst then (x, extractAtom (substituteAll [(x, t)] (Var x))) : extractSubst rest else [(x, extractAtom (substituteAll subst (Var x))) | (x, _) <- subst]
+                            where
+                                   extractAtom (Atom x) = x
+                                   extractSubst [] = []
+                                   extractSubst ((x, t):rest) = (x, extractAtom (substituteAll [(x, t)] (Var x))) : extractSubst rest
+                                   hasTooManyOccurrences list = length (filter (\(x, t) -> x == fst (head list)) list) > 1
 
--- Percorre cada cláusula que der match com o termo da consulta e aplica a unificação.
-   -- problema é com a query, pois quando unifica, nao remove a clausula que ja foi unificada, e tenta unificar com ela novamente, 
-   --e não com as outras clausulas. para resolver isso, basta remover a clausula que ja foi unificada. porem, teria que fazerr isso na query result
+-- Retorna as substituições realizadas e o resultado da consulta.
 interpret :: Prolog -> Term -> Subst
-interpret prog term = case query prog term of       -- como remover a clausula que ja foi unificada sem quebrar o programa?. Como fazer isto aqui?.         
-       [] -> Nothing
-       clauses -> let substs = mapMaybe (interpretClause prog term) clauses 
-                     in case substs of
-                            [] -> Nothing
-                            _ -> Just (foldr1 (++) substs)
+interpret prog term = let substs = mapMaybe (interpretClause term) query
+       in case substs of
+              [] -> Nothing
+              _ -> Just (concat substs)
        where
-              query p t = [clause | clause <- p, match t (headOf clause)] -- unify (headOf(head (query myExample (Func "mae" [Atom "janeti", Var "Q"])))) (Func "mae" [Atom "janeti", Var "Q"])
+              headOf (t :- _) = t
+              headOf (Simple t) = t
+              bodyOf (t :- ts) = ts
+              bodyOf (Simple t) = []
+              query = [clause | clause <- prog, match term (headOf clause)]
                      where
                             match (Atom x) (Atom y) = x == y
                             match (Var x) _ = True
                             match _ (Var x) = True
                             match (Func n1 args1) (Func n2 args2) = n1 == n2 && length args1 == length args2 && all (uncurry match) (zip args1 args2)
-              headOf (t :- _) = t
-              headOf (Simple t) = t
-              bodyOf (t :- ts) = ts
-              bodyOf (Simple t) = []
-              interpretClause p t c = case interpretHead c t of
+              interpretClause t c = case unify (headOf c) t of
                      Nothing -> Nothing
-                     Just subst -> case interpretBody p (map (substituteAll subst) (bodyOf c)) of
-                            Nothing -> Nothing
+                     Just subst -> case interpretBody (map (substituteAll subst) (bodyOf c)) of
+                            Nothing -> interpret (tail prog) t
                             Just subst' -> Just (subst ++ subst')
                      where
-                            interpretHead x y = unify (headOf x) y
-                            interpretBody _ [] = Just []
-                            interpretBody p (t:ts) = case interpret p t of                       --Percorre cada termo da lista de termos da cláusula e aplica a unificação com o termo da consulta
+                            interpretBody [] = Just []
+                            interpretBody (t:ts) = case interpret prog t of
                                    Nothing -> Nothing
-                                   Just subst'' -> case interpretBody p (map (substituteAll subst'') ts) of
+                                   Just subst'' -> case interpretBody (map (substituteAll subst'') ts) of
                                           Nothing -> Nothing
-                                          Just subst''' -> Just (subst'' ++ subst''')            -- problema com multiplas opções de matches, retorna sómente o primeiro, sem realizar as outras clausulas
+                                          Just subst''' -> Just (subst'' ++ subst''')
 
 -- Retorna uma lista de substituições a serem realizadas para que dois termos sejam unificados.
 unify :: Term -> Term -> Subst
@@ -119,42 +99,54 @@ substituteAll ((x, t):xs) t' = substituteAll xs (substitute (x, t) t')
 -- Exemplo de consulta interpretando o programa e exibindo o resultado--
 ------------------------------------------------------------------------
 
+-- example0 to execute all the other examples
 main :: IO ()
-main = print (queryResult myExample (Func "pai" [Atom "ari_vitor", Var "Q"]))              -- consulta pai funciona o.O, mãe de janeti retorna a propria janeti pq? pq ele só interpreta a primeira clausula.
+main = do
+       example
+       example1
+       example2
+       example3
+       example4
+       example5
+       example6
+       example7
 
-main1 :: IO ()
-main1 = print (queryResult myExample1 (Func "consulta" [Var "Q"]))
+example :: IO ()
+example = print (queryResult myExample (Func "mae" [Var "Q", Atom "janeti"]))     
 
-main2 :: IO ()
-main2 = print (queryResult myExample2 (Func "parent" [Var "X", Atom "arne"]))
+example1 :: IO ()
+example1 = print (queryResult myExample1 (Func "consulta" [Var "Q"]))
 
-main3 :: IO ()
-main3 = print (queryResult myExample3 (Func "likes" [Atom "prolog", Var "Y"]))
+example2 :: IO ()
+example2 = print (queryResult myExample2 (Func "parent" [Atom "arne", Var "X"]))
 
-main4 :: IO ()
-main4 = print (queryResult myExample4 (Func "professor" [Atom "charlie", Var "Y"]))
+example3 :: IO ()
+example3 = print (queryResult myExample3 (Func "likes" [Var "Y", Atom "prolog"]))
 
-main5 :: IO ()
-main5 = print (queryResult myExample5 (Func "gives" [Var "ALGUEM1", Atom "chocolate", Var "ALGUEM2"]))
+example4 :: IO ()
+example4 = print (queryResult myExample4 (Func "professor" [Var "Y", Atom "charlie"]))
 
-main6 :: IO ()
-main6 = print (queryResult myExample6 (Func "woman" [Var "X"]))              -- sabe que tem 3, porem mesmo assim repete o primeiro nos 3
+example5 :: IO ()
+example5 = print (queryResult myExample5 (Func "gives" [Var "ALGUEM1", Atom "chocolate", Var "ALGUEM2"]))
 
-main7 :: IO ()
-main7 = print (queryResult myExample7 (Func "king" [Atom "menelaus", Var "X", Var "Y"])) 
+example6 :: IO ()
+example6 = print (queryResult myExample6 (Func "woman" [Var "X"]))
+
+example7 :: IO ()
+example7 = print (queryResult myExample7 (Func "king" [Atom "menelaus", Var "X", Var "Y"]))
 
 --------------------------------
 --Exemplo de programa Prolog----
 --------------------------------
 
-       --Genealogic Tree Example
+       --Genealogic Tree example
 myExample :: Prolog
-myExample = [                             -- pq ele pega só a primeira cláusula? 
+myExample = [              
        Simple (Func "progenitor" [Atom "joao", Atom "ari"]),
        Simple (Func "progenitor" [Atom "vitoria", Atom "ari"]),
-       Simple (Func "progenitor" [Atom "olicio", Atom "janeti"]),
        Simple (Func "progenitor" [Atom "paulina", Atom "janeti"]),
-       Simple (Func "progenitor" [Atom "janeti", Atom "ari_vitor"]), ---------Aqui, problema é a ordem das cláusulas, se invertidas, funciona. quer dizer que o interpretador não está percorrendo todas as cláusulas. pq será? hummmmmmm
+       Simple (Func "progenitor" [Atom "olicio", Atom "janeti"]),
+       Simple (Func "progenitor" [Atom "janeti", Atom "ari_vitor"]),
        Simple (Func "progenitor" [Atom "ari", Atom "ari_vitor"]),
        Simple (Func "progenitor" [Atom "ari", Atom "ariel"]),
        Simple (Func "progenitor" [Atom "janeti", Atom "ariel"]),
@@ -198,7 +190,7 @@ myExample1 = [
        Simple (Func "irmao" [Atom "andre", Atom "joao"]),
        Func "consulta" [Var "X"] :- [Func "irmao" [Atom "andre", Var "X"]]]
 
-       --Modern Compiler Design Example page 613
+       --Modern Compiler Design example page 613
 myExample2 :: Prolog
 myExample2 = [
        Simple (Func "parent" [Atom "arne", Atom "james"]),
@@ -207,7 +199,7 @@ myExample2 = [
        Simple (Func "parent" [Atom "sachiko", Atom "rivka"]),
        Simple (Func "parent" [Atom "truitje", Atom "koos"])]
 
-       --Maribel Example page 171
+       --Maribel example page 171
 myExample3 :: Prolog
 myExample3 = [
        Simple (Func "based" [Atom "prolog", Atom "logic"]),

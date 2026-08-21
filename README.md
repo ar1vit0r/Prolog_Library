@@ -1,27 +1,48 @@
 # Prolog_Library
 
-A minimal Prolog interpreter written in Haskell. Implements unification, clause interpretation with backtracking, and variable renaming (alpha-conversion).
+A minimal Prolog interpreter written in Haskell. Implements unification, clause interpretation with backtracking, fresh variable generation, cuts, and error reporting.
 
-## Usage
+## Build
 
 ```bash
-ghci Prolog_Library.hs
+cabal build
 ```
 
-Then call `main` to run the built-in genealogical tree examples, or use `queryResult` directly:
+## Run
+
+```bash
+cabal run prolog-library
+```
+
+Or with GHCi:
+
+```bash
+ghci src/Term.hs src/Unify.hs src/Interpret.hs src/Examples.hs
+```
+
+## Modules
+
+| Module | Purpose |
+|--------|---------|
+| `Term` | Core types: `Term`, `Clause`, `Prolog`, `Subst` |
+| `Unify` | Robinson unification and substitution |
+| `Interpret` | Interpreter with backtracking and cuts |
+| `Examples` | Genealogical tree database and sample queries |
+| `Tests` | Unit tests for unification, substitution, and queries |
+
+## Features
+
+- **Unification**: standard Robinson unification with substitution
+- **Backtracking**: depth-first search over the clause database
+- **Cuts (`Cut`)**: commits to the current clause, prevents backtracking
+- **Fresh variables**: state-based alpha-conversion (no name collisions)
+- **Error reporting**: `Either String` results with failure messages
+
+## Example
 
 ```haskell
-queryResult myExample (Func "mae" [Var "Y", Atom "ari_vitor"])
+queryResult myExample (Func "pai" [Var "X", Atom "janeti"])
+-- [("X","olicio")]
 ```
 
-## How it works
-
-- **Terms**: `Var` (variable), `Atom` (constant), `Func` (compound term with arguments)
-- **Clauses**: facts (`Simple t`) or rules (`t :- [body]`)
-- **Unification**: standard Robinson unification (`unify`)
-- **Interpretation**: depth-first search with backtracking over the clause database
-- **Alpha-conversion**: renames variables with `øVAR` suffix to avoid capture
-
-## Example queries
-
-The included `myExample` database models a family tree with `progenitor`, `sexo`, `mae`, and `pai` predicates.
+The `myExample` database models a family tree with `progenitor`, `sexo`, `mae`, and `pai` predicates.

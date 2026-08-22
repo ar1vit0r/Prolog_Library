@@ -30,7 +30,24 @@ pipe = symbol "|"
 
 -- Prolog term parser
 parseTerm :: Parser Term
-parseTerm = try parseList <|> try parseVar <|> parseAtomOrFunc
+parseTerm = try parseList <|> try parseNot <|> try parseParen <|> parseTermAtom
+
+parseNot :: Parser Term
+parseNot = do
+  _ <- string "\\+" <* ws
+  t <- parseTerm
+  return (Not t)
+
+parseParen :: Parser Term
+parseParen = symbol "(" *> parseTerm <* symbol ")"
+
+parseTermAtom :: Parser Term
+parseTermAtom = do
+  t <- try parseVar <|> parseAtomOrFunc
+  option t $ try $ do
+    op <- symbol "="
+    rhs <- parseTerm
+    return (Func op [t, rhs])
 
 parseAtomOrFunc :: Parser Term
 parseAtomOrFunc = do
@@ -59,9 +76,6 @@ parseVar = do
   cs <- many (lower <|> upper <|> digit <|> char '_')
   ws
   return (Var (c : cs))
-
-parseTermAtom :: Parser Term
-parseTermAtom = parseVar <|> parseAtomOrFunc
 
 parseList :: Parser Term
 parseList = do

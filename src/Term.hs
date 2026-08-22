@@ -14,7 +14,7 @@ module Term
 
 import Data.List (intercalate)
 
-data Term = Var String | Atom String | Func String [Term] | Cut
+data Term = Var String | Atom String | Func String [Term] | Cut | Not Term
           deriving (Eq, Show)
 
 data Clause = Term :- [Term] | Simple Term
@@ -50,3 +50,4 @@ prettyTerm t@(Func "." _) = "[" ++ go t ++ "]"
     go (Func "." [h, t'])        = prettyTerm h ++ ", " ++ go t'
     go other                     = " | " ++ prettyTerm other
 prettyTerm (Func n args) = n ++ "(" ++ intercalate ", " (map prettyTerm args) ++ ")"
+prettyTerm (Not t)       = "\\+(" ++ prettyTerm t ++ ")"

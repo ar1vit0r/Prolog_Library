@@ -37,12 +37,14 @@ substituteAll ((x, t):xs) t' = substituteAll xs (sub (x, t) t')
       | v == y    = term
       | otherwise = Var y
     sub s (Func n args) = Func n (map (sub s) args)
+    sub s (Not nt) = Not (sub s nt)
 
 varsInTerm :: Term -> [String]
 varsInTerm Cut          = []
 varsInTerm (Atom _)     = []
 varsInTerm (Var x)      = [x]
 varsInTerm (Func _ args) = concatMap varsInTerm args
+varsInTerm (Not t)      = varsInTerm t
 
 mergeSubst :: Subst -> Subst -> Subst
 mergeSubst old new = [(v, substituteAll old t) | (v, t) <- new]

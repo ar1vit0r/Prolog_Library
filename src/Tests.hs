@@ -3,6 +3,7 @@ module Tests (runTests) where
 import Term
 import Unify
 import Interpret
+import Parse
 import ListOps
 import Graph
 
@@ -61,6 +62,27 @@ runTests = do
   assert "path from a" (queryResult graphProg (Func "path" [Atom "a", Var "X"])) [("X", "b")]
   assert "path b to e" (queryResult graphProg (Func "path" [Atom "b", Var "X"])) [("X", "c")]
   assert "connected e to a" (queryResult graphProg (Func "connected" [Atom "e", Atom "a"])) []
+
+  putStrLn "\n=== Negation Tests ==="
+  let negProg = [
+        Simple (Func "flies" [Atom "superman"]),
+        Func "flies" [Var "X"] :- [Func "bird" [Var "X"], Not (Func "broken" [Var "X"])]
+        ]
+  assert "= unification built-in" (queryResult negProg (Func "=" [Var "X", Atom "a"])) [("X", "a")]
+  let negProg2 = [
+        Simple (Func "p" [Atom "a"]),
+        Func "q" [Var "X"] :- [Func "p" [Var "X"], Not (Func "r" [Var "X"])]
+        ]
+  assert "neg in body" (queryResult negProg2 (Func "q" [Var "X"])) [("X", "a")]
+
+  putStrLn "\n=== Map Coloring Tests ==="
+  let colorProg = case parseProg (unlines [
+        "color(red).", "color(green).", "color(blue).",
+        "coloring(A, B, C, D) :-",
+        "  color(A), color(B), color(C), color(D),",
+        "  \\+(A = B), \\+(B = C), \\+(C = D), \\+(A = C)."
+        ]) of Right p -> p; Left e -> error (show e)
+  assert "map coloring" (queryResult colorProg (Func "coloring" [Var "A", Var "B", Var "C", Var "D"])) [("A", "red"), ("B", "green"), ("C", "blue"), ("D", "red")]
 
   putStrLn "\n=== All tests passed ==="
 

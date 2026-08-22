@@ -23,6 +23,7 @@ collectVars (Atom _) = []
 collectVars Cut = []
 collectVars (Var x) = [x]
 collectVars (Func _ args) = concatMap collectVars args
+collectVars (Not t) = collectVars t
 
 collectClauseVars :: Clause -> [String]
 collectClauseVars (Simple t) = collectVars t
@@ -50,6 +51,7 @@ applyTermMapping m (Var x) = case lookup x m of
   Just x' -> Var x'
   Nothing -> Var x
 applyTermMapping m (Func n args) = Func n (map (applyTermMapping m) args)
+applyTermMapping m (Not t) = Not (applyTermMapping m t)
 
 renameIO :: Term -> IO (Term, [(String, String)])
 renameIO (Atom x) = return (Atom x, [])
@@ -60,6 +62,9 @@ renameIO (Var x) = do
 renameIO (Func n args) = do
   results <- mapM renameIO args
   return (Func n (map fst results), concatMap snd results)
+renameIO (Not t) = do
+  (t', m) <- renameIO t
+  return (Not t', m)
 
 queryResult :: Prolog -> Term -> [(String, String)]
 queryResult prog term =
@@ -79,6 +84,10 @@ queryResult prog term =
 
 interpret :: Prolog -> Term -> CutState -> [CutState]
 interpret _ _ (subst, True) = [(subst, True)]
+interpret _ (Func "=" [x, y]) (subst, cut) =
+  case unify x y of
+    Nothing -> []
+    Just sub -> [(mergeSubst subst sub, cut)]
 interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
     matchingClauses = filter (matches term . headOf) prog
@@ -92,6 +101,7 @@ interpret prog term (_, _) = concatMap tryClause matchingClauses
     matches _ (Var _)             = True
     matches (Func n1 a1) (Func n2 a2) =
       n1 == n2 && length a1 == length a2 && all (uncurry matches) (zip a1 a2)
+    matches (Not t1) (Not t2)     = matches t1 t2
     matches _ _                   = False
 
     tryClause c =
@@ -107,6 +117,11 @@ interpret prog term (_, _) = concatMap tryClause matchingClauses
 
     interpretBody _ [] cs = [cs]
     interpretBody p (Cut:gs) (accSub, _) = interpretBody p gs (accSub, True)
+    interpretBody p (Not g:gs) (accSub, accCut) =
+      let solutions = interpret p g ([], False)
+      in if null solutions
+         then interpretBody p gs (accSub, accCut)
+         else []
     interpretBody p (g:gs) (accSub, accCut) =
       concatMap tryGoal (interpret p g ([], False))
       where

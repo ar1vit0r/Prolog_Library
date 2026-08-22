@@ -5,6 +5,7 @@ module Interpret
 
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
+import Control.Monad (guard)
 import Term
 import Unify (unify, substituteAll, mergeSubst)
 
@@ -88,6 +89,35 @@ interpret _ (Func "=" [x, y]) (subst, cut) =
   case unify x y of
     Nothing -> []
     Just sub -> [(mergeSubst subst sub, cut)]
+interpret _ (Func "is" [x, expr]) (subst, cut) =
+  case eval subst expr of
+    Just val -> [(mergeSubst subst [(showVar x, Atom (show val))], cut)]
+    Nothing -> []
+  where showVar (Var v) = v; showVar _ = ""
+interpret _ (Func "=\\=" [a, b]) (subst, cut) =
+  case (eval subst a, eval subst b) of
+    (Just x, Just y) | x /= y -> [(subst, cut)]
+    _ -> []
+interpret _ (Func "=:=" [a, b]) (subst, cut) =
+  case (eval subst a, eval subst b) of
+    (Just x, Just y) | x == y -> [(subst, cut)]
+    _ -> []
+interpret _ (Func "<" [a, b]) (subst, cut) =
+  case (eval subst a, eval subst b) of
+    (Just x, Just y) | x < y -> [(subst, cut)]
+    _ -> []
+interpret _ (Func ">" [a, b]) (subst, cut) =
+  case (eval subst a, eval subst b) of
+    (Just x, Just y) | x > y -> [(subst, cut)]
+    _ -> []
+interpret _ (Func "=<" [a, b]) (subst, cut) =
+  case (eval subst a, eval subst b) of
+    (Just x, Just y) | x <= y -> [(subst, cut)]
+    _ -> []
+interpret _ (Func ">=" [a, b]) (subst, cut) =
+  case (eval subst a, eval subst b) of
+    (Just x, Just y) | x >= y -> [(subst, cut)]
+    _ -> []
 interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
     matchingClauses = filter (matches term . headOf) prog
@@ -132,3 +162,21 @@ interpret prog term (_, _) = concatMap tryClause matchingClauses
           in if subCut
              then interpretBody p gs' (newSub, True)
              else interpretBody p gs' (newSub, newCut)
+
+eval :: Subst -> Term -> Maybe Int
+eval _ (Atom s) | not (null s) && all (\c -> c == '-' || c `elem` ['0'..'9']) s = Just (read s)
+eval subst (Var x) = lookup x subst >>= eval subst
+eval subst (Func "+" [a, b]) = (+) <$> eval subst a <*> eval subst b
+eval subst (Func "-" [a, b]) = (-) <$> eval subst a <*> eval subst b
+eval subst (Func "*" [a, b]) = (*) <$> eval subst a <*> eval subst b
+eval subst (Func "/" [a, b]) = do
+  x <- eval subst a
+  y <- eval subst b
+  guard (y /= 0)
+  return (x `div` y)
+eval subst (Func "mod" [a, b]) = do
+  x <- eval subst a
+  y <- eval subst b
+  guard (y /= 0)
+  return (x `mod` y)
+eval _ _ = Nothing

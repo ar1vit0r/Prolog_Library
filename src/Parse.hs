@@ -28,9 +28,9 @@ arrow = symbol ":-"
 pipe :: Parser String
 pipe = symbol "|"
 
--- Prolog term parser
+-- Prolog term parser with operator precedence
 parseTerm :: Parser Term
-parseTerm = try parseList <|> try parseNot <|> try parseParen <|> parseTermAtom
+parseTerm = try parseList <|> try parseNot <|> try parseParen <|> parseExpr
 
 parseNot :: Parser Term
 parseNot = do
@@ -41,13 +41,54 @@ parseNot = do
 parseParen :: Parser Term
 parseParen = symbol "(" *> parseTerm <* symbol ")"
 
-parseTermAtom :: Parser Term
-parseTermAtom = do
-  t <- try parseVar <|> parseAtomOrFunc
-  option t $ try $ do
-    op <- symbol "="
-    rhs <- parseTerm
-    return (Func op [t, rhs])
+-- Expression parser with precedence climbing
+parseExpr :: Parser Term
+parseExpr = do
+  lhs <- parseExpr2
+  option lhs $ try $ do
+    op <- parseCompOp
+    rhs <- parseExpr2
+    return (Func op [lhs, rhs])
+
+parseExpr2 :: Parser Term
+parseExpr2 = do
+  lhs <- parseExpr1
+  parseExpr2Rest lhs
+  where
+    parseExpr2Rest lhs = option lhs $ try $ do
+      op <- symbol "+" <|> symbol "-"
+      rhs <- parseExpr1
+      parseExpr2Rest (Func op [lhs, rhs])
+
+parseExpr1 :: Parser Term
+parseExpr1 = do
+  lhs <- parsePrimary
+  parseExpr1Rest lhs
+  where
+    parseExpr1Rest lhs = option lhs $ try $ do
+      op <- symbol "*" <|> symbol "/" <|> symbol "mod"
+      rhs <- parsePrimary
+      parseExpr1Rest (Func op [lhs, rhs])
+
+parsePrimary :: Parser Term
+parsePrimary = try parseList <|> try parseNot <|> try parseParen <|> try parseNegNum <|> try parseVar <|> parseAtomOrFunc
+
+parseNegNum :: Parser Term
+parseNegNum = do
+  _ <- char '-' <* ws
+  n <- many1 digit
+  ws
+  return (Atom ('-' : n))
+
+parseCompOp :: Parser String
+parseCompOp = try (symbol "=\\=")
+          <|> try (symbol "=:=")
+          <|> try (symbol "=<")
+          <|> try (symbol ">=")
+          <|> try (symbol "<")
+          <|> try (symbol ">")
+          <|> try (symbol "is")
+          <|> symbol "="
 
 parseAtomOrFunc :: Parser Term
 parseAtomOrFunc = do
@@ -60,7 +101,7 @@ parseAtomOrFunc = do
 
 parseName :: Parser String
 parseName = do
-  c <- lower <|> char '\''
+  c <- lower <|> digit <|> char '\''
   if c == '\''
     then do
       s <- many1 (noneOf "'")
@@ -80,8 +121,8 @@ parseVar = do
 parseList :: Parser Term
 parseList = do
   _ <- symbol "["
-  items <- parseTermAtom `sepBy` comma
-  tail' <- optionMaybe (pipe *> parseTermAtom)
+  items <- parseTerm `sepBy` comma
+  tail' <- optionMaybe (pipe *> parseTerm)
   _ <- symbol "]"
   return $ case (items, tail') of
     ([], Nothing)  -> nil

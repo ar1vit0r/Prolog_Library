@@ -84,6 +84,29 @@ runTests = do
         ]) of Right p -> p; Left e -> error (show e)
   assert "map coloring" (queryResult colorProg (Func "coloring" [Var "A", Var "B", Var "C", Var "D"])) [("A", "red"), ("B", "green"), ("C", "blue"), ("D", "red")]
 
+  putStrLn "\n=== Arithmetic Tests ==="
+  let arithProg = case parseProg (unlines [
+        "fib(0, 0).",
+        "fib(1, 1).",
+        "fib(N, F) :- N > 1, N1 is N - 1, N2 is N - 2, fib(N1, F1), fib(N2, F2), F is F1 + F2.",
+        "fact(0, 1).",
+        "fact(N, F) :- N > 0, N1 is N - 1, fact(N1, F1), F is F1 * N.",
+        "list_len([], 0).",
+        "list_len([_|T], N) :- list_len(T, N1), N is N1 + 1.",
+        "sum_list([], 0).",
+        "sum_list([H|T], S) :- sum_list(T, S1), S is S1 + H.",
+        "even(N) :- N mod 2 =:= 0.",
+        "max(A, B, A) :- A >= B.",
+        "max(A, B, B) :- A < B."
+        ]) of Right p -> p; Left e -> error (show e)
+  assert "fib 0" (queryResult arithProg (Func "fib" [Atom "0", Var "F"])) [("F", "0")]
+  assert "fib 1" (queryResult arithProg (Func "fib" [Atom "1", Var "F"])) [("F", "1")]
+  assert "fib 6" (queryResult arithProg (Func "fib" [Atom "6", Var "F"])) [("F", "8")]
+  assert "fact 5" (queryResult arithProg (Func "fact" [Atom "5", Var "F"])) [("F", "120")]
+  assert "list_len" (queryResult arithProg (Func "list_len" [list [Atom "a", Atom "b", Atom "c"], Var "N"])) [("N", "3")]
+  assert "sum_list" (queryResult arithProg (Func "sum_list" [list [Atom "1", Atom "2", Atom "3"], Var "S"])) [("S", "6")]
+  assert "max query" (queryResult arithProg (Func "max" [Atom "3", Atom "5", Var "M"])) [("M", "5")]
+
   putStrLn "\n=== All tests passed ==="
 
 familyProg :: Prolog

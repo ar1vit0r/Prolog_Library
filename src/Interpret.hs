@@ -106,9 +106,10 @@ interpret _ (Func "=" [x, y]) (subst, cut) =
     Just sub -> [(mergeSubst subst sub, cut)]
 interpret _ (Func "is" [x, expr]) (subst, cut) =
   case eval subst expr of
-    Just val -> [(mergeSubst subst [(showVar x, Atom (show val))], cut)]
+    Just val -> case unify (substituteAll subst x) (Atom (show val)) of
+      Just sub -> [(mergeSubst subst sub, cut)]
+      Nothing -> []
     Nothing -> []
-  where showVar (Var v) = v; showVar _ = ""
 interpret _ (Func "=\\=" [a, b]) (subst, cut) =
   case (eval subst a, eval subst b) of
     (Just x, Just y) | x /= y -> [(subst, cut)]
@@ -204,7 +205,9 @@ interpret prog term (_, _) = concatMap tryClause matchingClauses
              else interpretBody p gs' (newSub, newCut)
 
 eval :: Subst -> Term -> Maybe Int
-eval _ (Atom s) | not (null s) && all (\c -> c == '-' || c `elem` ['0'..'9']) s = Just (read s)
+eval _ (Atom s) = case reads s :: [(Int, String)] of
+  [(n, "")] -> Just n
+  _         -> Nothing
 eval subst (Var x) = lookup x subst >>= eval subst
 eval subst (Func "+" [a, b]) = (+) <$> eval subst a <*> eval subst b
 eval subst (Func "-" [a, b]) = (-) <$> eval subst a <*> eval subst b

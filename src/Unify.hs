@@ -11,7 +11,10 @@ unify :: Term -> Term -> Maybe Subst
 unify (Atom x) (Atom y)
   | x == y    = Just []
   | otherwise = Nothing
-unify term (Var x) = Just [(x, term)]
+unify term (Var x)
+  | Var x == term          = Just []
+  | x `elem` varsInTerm term = Nothing  -- occurs check: reject cyclic bindings
+  | otherwise               = Just [(x, term)]
 unify (Var x) term = unify term (Var x)
 unify Cut Cut = Just []
 unify (Func n1 args1) (Func n2 args2)
@@ -25,6 +28,7 @@ unify (Func n1 args1) (Func n2 args2)
                                    (map (substituteAll subst) ts') of
         Nothing -> Nothing
         Just subst' -> Just (subst ++ subst')
+unify (Not t1) (Not t2) = unify t1 t2
 unify _ _ = Nothing
 
 substituteAll :: Subst -> Term -> Term

@@ -119,6 +119,15 @@ runTests = do
   assert "findall parents" (queryResult findallProg (Func "findall" [Var "X", Func "parent" [Var "X", Atom "ari"], Var "R"])) [("R", "[joao, vitoria]")]
   assert "findall siblings" (queryResult findallProg (Func "findall" [Var "X", Func "sibling" [Atom "ari", Var "X"], Var "R"])) [("R", "[]")]
 
+  putStrLn "\n=== Bug Fix Regression Tests ==="
+  assert "occurs check blocks cyclic bind" (unify (Var "X") (Func "f" [Var "X"])) Nothing
+  assert "self-unify still succeeds" (unify (Var "X") (Var "X")) (Just [])
+  assert "not/not unifies through" (unify (Not (Atom "a")) (Not (Atom "a"))) (Just [])
+  assert "not/not mismatch fails" (unify (Not (Atom "a")) (Not (Atom "b"))) Nothing
+  assert "is fails on mismatched bound LHS" (interpret [] (Func "is" [Atom "99", Func "+" [Atom "2", Atom "3"]]) ([], False)) []
+  assert "is succeeds on matching bound LHS" (interpret [] (Func "is" [Atom "5", Func "+" [Atom "2", Atom "3"]]) ([], False)) [([], False)]
+  assert "eval rejects malformed numeric atom" (interpret [] (Func "is" [Var "X", Atom "1-2-3"]) ([], False)) []
+
   putStrLn "\n=== All tests passed ==="
 
 familyProg :: Prolog

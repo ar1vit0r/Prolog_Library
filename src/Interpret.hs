@@ -5,7 +5,7 @@ module Interpret
 
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
-import Control.Monad (guard)
+import Control.Monad (guard, foldM)
 import Term
 import Unify (unify, substituteAll, mergeSubst)
 
@@ -55,17 +55,28 @@ applyTermMapping m (Func n args) = Func n (map (applyTermMapping m) args)
 applyTermMapping m (Not t) = Not (applyTermMapping m t)
 
 renameIO :: Term -> IO (Term, [(String, String)])
-renameIO (Atom x) = return (Atom x, [])
-renameIO Cut = return (Cut, [])
-renameIO (Var x) = do
-  v <- freshVarIO
-  return (Var (x ++ v), [(x, x ++ v)])
-renameIO (Func n args) = do
-  results <- mapM renameIO args
-  return (Func n (map fst results), concatMap snd results)
-renameIO (Not t) = do
-  (t', m) <- renameIO t
-  return (Not t', m)
+renameIO t = do
+  (t', mapping) <- renameIOAcc t []
+  return (t', mapping)
+
+renameIOAcc :: Term -> [(String, String)] -> IO (Term, [(String, String)])
+renameIOAcc (Atom x) acc = return (Atom x, acc)
+renameIOAcc Cut acc = return (Cut, acc)
+renameIOAcc (Var x) acc = case lookup x acc of
+  Just freshName -> return (Var freshName, acc)
+  Nothing -> do
+    freshName <- freshVarIO
+    return (Var freshName, acc ++ [(x, freshName)])
+renameIOAcc (Func n args) acc = do
+  (args', acc') <- foldM go ([], acc) args
+  return (Func n (reverse args'), acc')
+  where
+    go (as, a) arg = do
+      (arg', a') <- renameIOAcc arg a
+      return (arg':as, a')
+renameIOAcc (Not t) acc = do
+  (t', acc') <- renameIOAcc t acc
+  return (Not t', acc')
 
 queryResult :: Prolog -> Term -> [(String, String)]
 queryResult prog term =
@@ -75,7 +86,11 @@ queryResult prog term =
        [] -> []
        (subst, _) : _ ->
          [(orig, val) | (orig, rn) <- mapping
-         , let val = prettyTerm (resolve subst (Var rn))
+         , let resolved = resolve subst (Var rn)
+         , case resolved of
+             Var _ -> False  -- skip unbound variables
+             _ -> True
+         , let val = prettyTerm resolved
          , not (null val)]
   where
     resolve s t
@@ -118,6 +133,31 @@ interpret _ (Func ">=" [a, b]) (subst, cut) =
   case (eval subst a, eval subst b) of
     (Just x, Just y) | x >= y -> [(subst, cut)]
     _ -> []
+interpret prog (Func "findall" [template, goal, resultList]) (subst, cut) =
+  let solutions = interpret prog goal ([], False)
+      values = [resolve soln template | (soln, _) <- solutions]
+      listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
+  in case unify listTerm resultList of
+       Nothing -> []
+       Just sub' -> [(mergeSubst subst sub', cut)]
+  where
+    resolve s t
+      | t' == t    = t
+      | otherwise  = resolve s t'
+      where t' = substituteAll s t
+interpret prog (Func "bagof" [template, goal, resultList]) (subst, cut) =
+  let solutions = interpret prog goal ([], False)
+  in if null solutions then [] else
+       let values = [resolve soln template | (soln, _) <- solutions]
+           listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
+       in case unify listTerm resultList of
+            Nothing -> []
+            Just sub' -> [(mergeSubst subst sub', cut)]
+  where
+    resolve s t
+      | t' == t    = t
+      | otherwise  = resolve s t'
+      where t' = substituteAll s t
 interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
     matchingClauses = filter (matches term . headOf) prog

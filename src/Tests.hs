@@ -107,6 +107,18 @@ runTests = do
   assert "sum_list" (queryResult arithProg (Func "sum_list" [list [Atom "1", Atom "2", Atom "3"], Var "S"])) [("S", "6")]
   assert "max query" (queryResult arithProg (Func "max" [Atom "3", Atom "5", Var "M"])) [("M", "5")]
 
+  putStrLn "\n=== Findall Tests ==="
+  let findallProg = case parseProg (unlines [
+        "parent(joao, ari).", "parent(vitoria, ari).",
+        "parent(paulina, janeti).", "parent(olicio, janeti).",
+        "parent(janeti, ari_vitor).", "parent(ari, ari_vitor).",
+        "sibling(X, Y) :- parent(Z, X), parent(Z, Y), \\+(X = Y)."
+        ]) of Right p -> p; Left e -> error (show e)
+  let simpleProg = [Simple (Func "p" [Atom "a"]), Simple (Func "p" [Atom "b"])]
+  assert "findall simple" (queryResult simpleProg (Func "findall" [Var "X", Func "p" [Var "X"], Var "R"])) [("R", "[a, b]")]
+  assert "findall parents" (queryResult findallProg (Func "findall" [Var "X", Func "parent" [Var "X", Atom "ari"], Var "R"])) [("R", "[joao, vitoria]")]
+  assert "findall siblings" (queryResult findallProg (Func "findall" [Var "X", Func "sibling" [Atom "ari", Var "X"], Var "R"])) [("R", "[]")]
+
   putStrLn "\n=== All tests passed ==="
 
 familyProg :: Prolog

@@ -3,6 +3,8 @@ module Tests (runTests) where
 import Term
 import Unify
 import Interpret
+import ListOps
+import Graph
 
 runTests :: IO ()
 runTests = do
@@ -48,6 +50,17 @@ runTests = do
   assert "mae query" (queryResult fam (Func "mae" [Var "X", Atom "ari"])) [("X", "vitoria")]
   assert "pai query" (queryResult fam (Func "pai" [Var "X", Atom "janeti"])) [("X", "olicio")]
   assert "progenitor query" (queryResult fam (Func "progenitor" [Var "X", Atom "ari_vitor"])) [("X", "janeti")]
+
+  putStrLn "\n=== List Operation Tests ==="
+  assert "member query" (queryResult listProg (Func "member" [Var "X", list [Atom "a", Atom "b", Atom "c"]])) [("X", "a")]
+  assert "append query" (queryResult listProg (Func "append" [list [Atom "a", Atom "b"], list [Atom "c", Atom "d"], Var "R"])) [("R", "[a, b, c, d]")]
+  assert "reverse query" (queryResult listProg (Func "reverse" [list [Atom "a", Atom "b"], Var "R"])) [("R", "[b, a]")]
+  assert "select query" (queryResult listProg (Func "select" [Atom "b", list [Atom "a", Atom "b", Atom "c"], Var "R"])) [("R", "[a, c]")]
+
+  putStrLn "\n=== Graph Reachability Tests ==="
+  assert "path from a" (queryResult graphProg (Func "path" [Atom "a", Var "X"])) [("X", "b")]
+  assert "path b to e" (queryResult graphProg (Func "path" [Atom "b", Var "X"])) [("X", "c")]
+  assert "connected e to a" (queryResult graphProg (Func "connected" [Atom "e", Atom "a"])) []
 
   putStrLn "\n=== All tests passed ==="
 

@@ -25,6 +25,7 @@ unify (Func n1 args1) (Func n2 args2)
                                    (map (substituteAll subst) ts') of
         Nothing -> Nothing
         Just subst' -> Just (subst ++ subst')
+unify _ _ = Nothing
 
 substituteAll :: Subst -> Term -> Term
 substituteAll [] term = term

@@ -3,41 +3,79 @@ module Interpret
        , interpret
        ) where
 
-import Control.Monad.State.Strict
+import Data.IORef
+import System.IO.Unsafe (unsafePerformIO)
 import Term
-import Unify
+import Unify (unify, substituteAll, mergeSubst)
 
-freshVar :: State Int String
-freshVar = do
-  n <- get
-  put (n + 1)
+{-# NOINLINE counter #-}
+counter :: IORef Int
+counter = unsafePerformIO (newIORef 0)
+
+freshVarIO :: IO String
+freshVarIO = do
+  n <- readIORef counter
+  writeIORef counter (n + 1)
   return ("_V" ++ show n)
 
-renameWithMapping :: Term -> State Int (Term, [(String, String)])
-renameWithMapping (Atom x) = return (Atom x, [])
-renameWithMapping Cut = return (Cut, [])
-renameWithMapping (Var x) = do
-  v <- freshVar
+collectVars :: Term -> [String]
+collectVars (Atom _) = []
+collectVars Cut = []
+collectVars (Var x) = [x]
+collectVars (Func _ args) = concatMap collectVars args
+
+collectClauseVars :: Clause -> [String]
+collectClauseVars (Simple t) = collectVars t
+collectClauseVars (t :- body) = collectVars t ++ concatMap collectVars body
+
+unique :: Eq a => [a] -> [a]
+unique [] = []
+unique (x:xs) = x : unique (filter (/= x) xs)
+
+freshenClauseIO :: Clause -> IO Clause
+freshenClauseIO c = do
+  let allVars = unique (collectClauseVars c)
+  mapping <- mapM (\v -> do { v' <- freshVarIO; return (v, v') }) allVars
+  return (applyClauseMapping mapping c)
+
+applyClauseMapping :: [(String, String)] -> Clause -> Clause
+applyClauseMapping m (Simple t) = Simple (applyTermMapping m t)
+applyClauseMapping m (t :- body) =
+  applyTermMapping m t :- map (applyTermMapping m) body
+
+applyTermMapping :: [(String, String)] -> Term -> Term
+applyTermMapping _ (Atom x) = Atom x
+applyTermMapping _ Cut = Cut
+applyTermMapping m (Var x) = case lookup x m of
+  Just x' -> Var x'
+  Nothing -> Var x
+applyTermMapping m (Func n args) = Func n (map (applyTermMapping m) args)
+
+renameIO :: Term -> IO (Term, [(String, String)])
+renameIO (Atom x) = return (Atom x, [])
+renameIO Cut = return (Cut, [])
+renameIO (Var x) = do
+  v <- freshVarIO
   return (Var (x ++ v), [(x, x ++ v)])
-renameWithMapping (Func n args) = do
-  results <- mapM renameWithMapping args
-  let args' = map fst results
-      pairs = concatMap snd results
-  return (Func n args', pairs)
+renameIO (Func n args) = do
+  results <- mapM renameIO args
+  return (Func n (map fst results), concatMap snd results)
 
 queryResult :: Prolog -> Term -> [(String, String)]
-queryResult prog term = case evalState (renameWithMapping term) 0 of
-  (renamedTerm, mapping) ->
-    let solutions = interpret prog renamedTerm ([], False)
-    in case solutions of
-         [] -> []
-         (subst, _) : _ ->
-           [(orig, val) | (orig, rn) <- mapping
-           , let val = extractAtom (substituteAll subst (Var rn))
-           , not (null val)]
+queryResult prog term =
+  let (renamedTerm, mapping) = unsafePerformIO (renameIO term)
+      solutions = interpret prog renamedTerm ([], False)
+  in case solutions of
+       [] -> []
+       (subst, _) : _ ->
+         [(orig, val) | (orig, rn) <- mapping
+         , let val = prettyTerm (resolve subst (Var rn))
+         , not (null val)]
   where
-    extractAtom (Atom x) = x
-    extractAtom _        = ""
+    resolve s t
+      | t' == t    = t
+      | otherwise  = resolve s t'
+      where t' = substituteAll s t
 
 interpret :: Prolog -> Term -> CutState -> [CutState]
 interpret _ _ (subst, True) = [(subst, True)]
@@ -56,20 +94,21 @@ interpret prog term (_, _) = concatMap tryClause matchingClauses
       n1 == n2 && length a1 == length a2 && all (uncurry matches) (zip a1 a2)
     matches _ _                   = False
 
-    tryClause c = case unify (headOf c) term of
-      Nothing -> []
-      Just sub -> case c of
-        Simple _ -> [(sub, False)]
-        _ :- body ->
-          let bodyGoals = map (substituteAll sub) body
-              bodyResults = interpretBody prog bodyGoals ([], False)
-          in [(mergeSubst sub bodySub, bodyCut) | (bodySub, bodyCut) <- bodyResults]
+    tryClause c =
+      let freshened = unsafePerformIO (freshenClauseIO c)
+      in case unify (headOf freshened) term of
+           Nothing -> []
+           Just sub -> case freshened of
+             Simple _ -> [(sub, False)]
+             _ :- body ->
+               let bodyGoals = map (substituteAll sub) body
+                   bodyResults = interpretBody prog bodyGoals ([], False)
+               in [(mergeSubst sub bodySub, bodyCut) | (bodySub, bodyCut) <- bodyResults]
 
     interpretBody _ [] cs = [cs]
     interpretBody p (Cut:gs) (accSub, _) = interpretBody p gs (accSub, True)
     interpretBody p (g:gs) (accSub, accCut) =
-      let gResults = interpret p g ([], False)
-      in concatMap tryGoal gResults
+      concatMap tryGoal (interpret p g ([], False))
       where
         tryGoal (sub, subCut) =
           let newSub = mergeSubst accSub sub

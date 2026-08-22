@@ -1,23 +1,32 @@
 module Main where
 
+import Term
+import Interpret
 import Examples
+import ListOps
+import Graph
 import Tests
 
 main :: IO ()
 main = do
   putStrLn "=== Prolog_Library ==="
   putStrLn ""
-  putStrLn "Example 1: mae(Y, ari_vitor)"
+
+  putStrLn "--- Family Tree ---"
   print ex1
-  putStrLn "Example 2: pai(Q, janeti)"
   print ex2
-  putStrLn "Example 3: mae(X, ari)"
   print ex3
-  putStrLn "Example 4: progenitor(X, ari_vitor)"
-  print ex4
-  putStrLn "Example 5: progenitor(ari, Y)"
-  print ex5
-  putStrLn "Example 6: progenitor(X, Y)"
-  print ex6
+
+  putStrLn ""
+  putStrLn "--- List Operations ---"
+  print (queryResult listProg (Func "member" [Var "X", list [Atom "a", Atom "b", Atom "c"]]))
+  print (queryResult listProg (Func "append" [list [Atom "a", Atom "b"], list [Atom "c", Atom "d"], Var "R"]))
+  print (queryResult listProg (Func "reverse" [list [Atom "a", Atom "b", Atom "c"], Var "R"]))
+
+  putStrLn ""
+  putStrLn "--- Graph Reachability ---"
+  print (queryResult graphProg (Func "path" [Atom "a", Var "X"]))
+  print (queryResult graphProg (Func "path" [Var "X", Atom "e"]))
+
   putStrLn ""
   runTests

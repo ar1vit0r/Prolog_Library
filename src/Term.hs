@@ -7,10 +7,10 @@ module Term
        , PrologResult
        ) where
 
-data Term = Var String | Atom String | Func String [Term]
+data Term = Var String | Atom String | Func String [Term] | Cut
           deriving (Eq, Show)
 
-data Clause = Term :- [Term] | Simple Term | Cut
+data Clause = Term :- [Term] | Simple Term
             deriving (Eq, Show)
 
 type Prolog = [Clause]

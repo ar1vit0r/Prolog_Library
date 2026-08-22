@@ -13,62 +13,68 @@ freshVar = do
   put (n + 1)
   return ("_V" ++ show n)
 
-renameTerm :: Term -> State Int Term
-renameTerm (Atom x) = return (Atom x)
-renameTerm (Var x) = do
+renameWithMapping :: Term -> State Int (Term, [(String, String)])
+renameWithMapping (Atom x) = return (Atom x, [])
+renameWithMapping Cut = return (Cut, [])
+renameWithMapping (Var x) = do
   v <- freshVar
-  return (Var (x ++ v))
-renameTerm (Func n args) = do
-  args' <- mapM renameTerm args
-  return (Func n args')
+  return (Var (x ++ v), [(x, x ++ v)])
+renameWithMapping (Func n args) = do
+  results <- mapM renameWithMapping args
+  let args' = map fst results
+      pairs = concatMap snd results
+  return (Func n args', pairs)
 
 queryResult :: Prolog -> Term -> [(String, String)]
-queryResult prog term = case evalState (renameTerm term) 0 of
-  renamed -> case interpret prog renamed ([], False) of
-    Right (subst, _) -> undoRenamed
-      [(x, extractAtom (substituteAll subst (Var x)))
-       | (x, _) <- subst, x `elem` varsInTerm renamed]
-    Left _ -> []
+queryResult prog term = case evalState (renameWithMapping term) 0 of
+  (renamedTerm, mapping) ->
+    let solutions = interpret prog renamedTerm ([], False)
+    in case solutions of
+         [] -> []
+         (subst, _) : _ ->
+           [(orig, val) | (orig, rn) <- mapping
+           , let val = extractAtom (substituteAll subst (Var rn))
+           , not (null val)]
   where
     extractAtom (Atom x) = x
     extractAtom _        = ""
-    undoRenamed xs = [(takeWhile (/= '_') x, t) | (x, t) <- xs, not (null t)]
 
-interpret :: Prolog -> Term -> CutState -> PrologResult
-interpret _ _ (subst, True) = Right (subst, True)
-interpret prog term cs@(_, cut) = case filter (matches term . headOf) prog of
-  [] -> Right ([], cut)
-  clauses -> tryClauses clauses
+interpret :: Prolog -> Term -> CutState -> [CutState]
+interpret _ _ (subst, True) = [(subst, True)]
+interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
-    headOf (t :- _)  = t
-    headOf (Simple t) = t
-    headOf Cut        = Atom ""
+    matchingClauses = filter (matches term . headOf) prog
 
-    matches (Atom x) (Atom y)   = x == y
-    matches (Var _) _           = True
-    matches _ (Var _)           = True
+    headOf (t :- _)   = t
+    headOf (Simple t) = t
+
+    matches Cut Cut               = True
+    matches (Atom x) (Atom y)     = x == y
+    matches (Var _) _             = True
+    matches _ (Var _)             = True
     matches (Func n1 a1) (Func n2 a2) =
       n1 == n2 && length a1 == length a2 && all (uncurry matches) (zip a1 a2)
-    matches _ _                 = False
+    matches _ _                   = False
 
-    tryClauses [] = Right ([], cut)
-    tryClauses (c:rest) = case unify (headOf c) term of
-      Nothing -> tryClauses rest
+    tryClause c = case unify (headOf c) term of
+      Nothing -> []
       Just sub -> case c of
-        Simple _ -> Right (sub, cut)
-        _ :- body -> case interpretBody prog (map (substituteAll sub) body) ([], False) of
-          Right (bodySub, bodyCut) ->
-            if bodyCut then Right (sub ++ bodySub, True)
-            else Right (sub ++ bodySub, cut)
-          Left err -> if cut then Left err else tryClauses rest
-        Cut -> Right ([], True)
+        Simple _ -> [(sub, False)]
+        _ :- body ->
+          let bodyGoals = map (substituteAll sub) body
+              bodyResults = interpretBody prog bodyGoals ([], False)
+          in [(mergeSubst sub bodySub, bodyCut) | (bodySub, bodyCut) <- bodyResults]
 
-    interpretBody _ [] cs' = Right cs'
-    interpretBody p (g:gs) (accSub, accCut) = case interpret p g (accSub, False) of
-      Left err -> Left err
-      Right (sub, subCut) ->
-        let newSub = accSub ++ sub
-            newCut = accCut || subCut
-        in if subCut
-           then interpretBody p gs (newSub, True)
-           else interpretBody p gs (newSub, newCut)
+    interpretBody _ [] cs = [cs]
+    interpretBody p (Cut:gs) (accSub, _) = interpretBody p gs (accSub, True)
+    interpretBody p (g:gs) (accSub, accCut) =
+      let gResults = interpret p g ([], False)
+      in concatMap tryGoal gResults
+      where
+        tryGoal (sub, subCut) =
+          let newSub = mergeSubst accSub sub
+              newCut = accCut || subCut
+              gs' = map (substituteAll sub) gs
+          in if subCut
+             then interpretBody p gs' (newSub, True)
+             else interpretBody p gs' (newSub, newCut)

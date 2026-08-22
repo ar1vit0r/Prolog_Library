@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               Prolog_Library
+name:               prolog-library
 version:            0.1.0.0
 synopsis:           A minimal Prolog interpreter in Haskell
 license:            MIT

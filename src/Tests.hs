@@ -57,9 +57,11 @@ familyProg = [
   Simple (Func "progenitor" [Atom "vitoria", Atom "ari"]),
   Simple (Func "progenitor" [Atom "paulina", Atom "janeti"]),
   Simple (Func "progenitor" [Atom "olicio", Atom "janeti"]),
+  Simple (Func "progenitor" [Atom "janeti", Atom "ari_vitor"]),
   Simple (Func "sexo" [Atom "ari", Atom "masculino"]),
   Simple (Func "sexo" [Atom "vitoria", Atom "feminino"]),
   Simple (Func "sexo" [Atom "olicio", Atom "masculino"]),
+  Simple (Func "sexo" [Atom "janeti", Atom "feminino"]),
   Func "mae" [Var "X", Var "Y"] :- [
     Func "progenitor" [Var "X", Var "Y"],
     Func "sexo" [Var "X", Atom "feminino"]

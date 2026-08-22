@@ -1,0 +1,12 @@
+*.hi
+*.o
+*.exe
+*.dyn_hi
+*.dyn_o
+dist/
+dist-newstyle/
+.stack-work/
+*.cabal~
+cabal.project.local
+cabal.sandbox.config
+.ghc.environment.*

@@ -1,13 +1,14 @@
 module Interpret
        ( queryResult
        , interpret
+       , resolve
        ) where
 
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad (guard, foldM)
 import Term
-import Unify (unify, substituteAll, mergeSubst)
+import Unify (unify, substituteAll, mergeSubst, varsInTerm)
 
 {-# NOINLINE counter #-}
 counter :: IORef Int
@@ -92,11 +93,12 @@ queryResult prog term =
              _ -> True
          , let val = prettyTerm resolved
          , not (null val)]
-  where
-    resolve s t
-      | t' == t    = t
-      | otherwise  = resolve s t'
-      where t' = substituteAll s t
+
+resolve :: Subst -> Term -> Term
+resolve s t
+  | t' == t    = t
+  | otherwise  = resolve s t'
+  where t' = substituteAll s t
 
 interpret :: Prolog -> Term -> CutState -> [CutState]
 interpret _ _ (subst, True) = [(subst, True)]
@@ -141,11 +143,6 @@ interpret prog (Func "findall" [template, goal, resultList]) (subst, cut) =
   in case unify listTerm resultList of
        Nothing -> []
        Just sub' -> [(mergeSubst subst sub', cut)]
-  where
-    resolve s t
-      | t' == t    = t
-      | otherwise  = resolve s t'
-      where t' = substituteAll s t
 interpret prog (Func "bagof" [template, goal, resultList]) (subst, cut) =
   let solutions = interpret prog goal ([], False)
   in if null solutions then [] else
@@ -154,11 +151,6 @@ interpret prog (Func "bagof" [template, goal, resultList]) (subst, cut) =
        in case unify listTerm resultList of
             Nothing -> []
             Just sub' -> [(mergeSubst subst sub', cut)]
-  where
-    resolve s t
-      | t' == t    = t
-      | otherwise  = resolve s t'
-      where t' = substituteAll s t
 interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
     matchingClauses = filter (matches term . headOf) prog

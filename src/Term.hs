@@ -1,3 +1,5 @@
+-- | Core types for the Prolog interpreter: terms, clauses, substitutions,
+-- and pretty-printing.
 module Term
        ( Term(..)
        , Clause(..)

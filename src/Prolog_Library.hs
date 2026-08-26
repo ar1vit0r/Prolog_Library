@@ -1,3 +1,4 @@
+-- | Entry point: runs example queries and the test suite.
 module Main where
 
 import Term

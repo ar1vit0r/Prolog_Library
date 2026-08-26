@@ -35,11 +35,11 @@
 
 ## Phase 5: Legibility
 - [x] Deduplicate `resolve` helper (3 identical copies in Interpret.hs → one shared)
-- [ ] Remove `collectVars`, reuse `varsInTerm` from Unify
-- [ ] Extract `evalBinop` to collapse 7 near-identical comparison builtins
-- [ ] Add docstrings to key functions (`interpret`, `mergeSubst`, `eval`, `queryResult`)
-- [ ] Add module-level doc comments to all modules
-- [ ] Consolidate `Examples.myExample` / `Tests.familyProg` into single source of truth
-- [ ] Extract fresh variable logic (`freshVarIO`, `freshenClauseIO`, `renameIO`) into `FreshVars` module
-- [ ] Extract built-in handlers (`evalBuiltin`) from `interpret` into own section/module
-- [ ] Comment `mergeSubst` and `unsafePerformIO` usage explaining the semantics
+- [x] Remove `collectVars`, reuse `varsInTerm` from Unify
+- [x] Extract `evalBinop` to collapse 7 near-identical comparison builtins
+- [x] Add docstrings to key functions (`interpret`, `mergeSubst`, `eval`, `queryResult`)
+- [x] Add module-level doc comments to all modules
+- [x] Consolidate `Examples.myExample` / `Tests.familyProg` into single source of truth
+- [x] Extract fresh variable logic (`freshVarIO`, `freshenClauseIO`, `renameIO`) into `FreshVars` module
+- [x] Extract built-in handlers (`evalBuiltin`) from `interpret` into own section/module
+- [x] Comment `mergeSubst` and `unsafePerformIO` usage explaining the semantics

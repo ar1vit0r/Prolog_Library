@@ -1,3 +1,5 @@
+-- | Standard list operations as Prolog clauses: member, append, reverse,
+-- select, and permutation.
 module ListOps (listProg) where
 
 import Term

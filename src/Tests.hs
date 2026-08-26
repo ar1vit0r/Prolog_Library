@@ -1,3 +1,5 @@
+-- | Test suite covering unification, substitution, queries, cuts, negation,
+-- arithmetic, parsing, list operations, graph reachability, and edge cases.
 module Tests (runTests) where
 
 import Data.List (intercalate)
@@ -7,6 +9,7 @@ import Interpret
 import Parse
 import ListOps
 import Graph
+import Examples (myExample)
 
 runTests :: IO ()
 runTests = do
@@ -48,7 +51,7 @@ runTests = do
   assert "no cut enumerates" (queryResult noCutProg (Func "s" [Var "X"])) [("X", "a")]
 
   putStrLn "\n=== Family Tree Tests ==="
-  let fam = familyProg
+  let fam = myExample
   assert "mae query" (queryResult fam (Func "mae" [Var "X", Atom "ari"])) [("X", "vitoria")]
   assert "pai query" (queryResult fam (Func "pai" [Var "X", Atom "janeti"])) [("X", "olicio")]
   assert "progenitor query" (queryResult fam (Func "progenitor" [Var "X", Atom "ari_vitor"])) [("X", "janeti")]
@@ -203,27 +206,6 @@ runTests = do
   assert "eval rejects malformed numeric atom" (interpret [] (Func "is" [Var "X", Atom "1-2-3"]) ([], False)) []
 
   putStrLn "\n=== All tests passed ==="
-
-familyProg :: Prolog
-familyProg = [
-  Simple (Func "progenitor" [Atom "joao", Atom "ari"]),
-  Simple (Func "progenitor" [Atom "vitoria", Atom "ari"]),
-  Simple (Func "progenitor" [Atom "paulina", Atom "janeti"]),
-  Simple (Func "progenitor" [Atom "olicio", Atom "janeti"]),
-  Simple (Func "progenitor" [Atom "janeti", Atom "ari_vitor"]),
-  Simple (Func "sexo" [Atom "ari", Atom "masculino"]),
-  Simple (Func "sexo" [Atom "vitoria", Atom "feminino"]),
-  Simple (Func "sexo" [Atom "olicio", Atom "masculino"]),
-  Simple (Func "sexo" [Atom "janeti", Atom "feminino"]),
-  Func "mae" [Var "X", Var "Y"] :- [
-    Func "progenitor" [Var "X", Var "Y"],
-    Func "sexo" [Var "X", Atom "feminino"]
-  ],
-  Func "pai" [Var "X", Var "Y"] :- [
-    Func "progenitor" [Var "X", Var "Y"],
-    Func "sexo" [Var "X", Atom "masculino"]
-  ]
-  ]
 
 assert :: (Eq a, Show a) => String -> a -> a -> IO ()
 assert name got expected

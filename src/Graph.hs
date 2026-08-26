@@ -1,3 +1,4 @@
+-- | Graph reachability example: edge, path, and connected as Prolog clauses.
 module Graph (graphProg) where
 
 import Term

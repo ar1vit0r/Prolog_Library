@@ -1,3 +1,4 @@
+-- | Genealogical tree database and sample queries for demonstration.
 module Examples
        ( myExample
        , ex1

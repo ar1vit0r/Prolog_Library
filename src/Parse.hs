@@ -1,3 +1,5 @@
+-- | Parsec-based parser for Prolog terms and clause databases.
+-- Supports operator-precedence expressions, list notation, and negation.
 module Parse
        ( parseProg
        , parseTerm

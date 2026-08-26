@@ -9,6 +9,7 @@ executable prolog-library
   main-is:          Prolog_Library.hs
   other-modules:    Term
                   , Unify
+                  , FreshVars
                   , Interpret
                   , Parse
                   , Examples

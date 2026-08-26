@@ -1,3 +1,5 @@
+-- | Robinson unification, substitution application, variable collection,
+-- and substitution merging.
 module Unify
        ( unify
        , substituteAll
@@ -50,6 +52,9 @@ varsInTerm (Var x)      = [x]
 varsInTerm (Func _ args) = concatMap varsInTerm args
 varsInTerm (Not t)      = varsInTerm t
 
+-- | Merge two substitutions. @new@ overrides @old@; bindings in @old@ are
+-- composed through @new@ so accumulated bindings stay consistent across
+-- backtracking steps.
 mergeSubst :: Subst -> Subst -> Subst
 mergeSubst old new = [(v, substituteAll old t) | (v, t) <- new]
                      ++ [(v, substituteAll new t) | (v, t) <- old, not (any (\(v', _) -> v == v') new)]

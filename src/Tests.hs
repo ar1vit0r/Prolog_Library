@@ -1,8 +1,15 @@
+-- | Test suite covering unification, substitution, queries, cuts, negation,
+-- arithmetic, parsing, list operations, graph reachability, and edge cases.
 module Tests (runTests) where
 
+import Data.List (intercalate)
 import Term
 import Unify
 import Interpret
+import Parse
+import ListOps
+import Graph
+import Examples (myExample)
 
 runTests :: IO ()
 runTests = do
@@ -44,33 +51,161 @@ runTests = do
   assert "no cut enumerates" (queryResult noCutProg (Func "s" [Var "X"])) [("X", "a")]
 
   putStrLn "\n=== Family Tree Tests ==="
-  let fam = familyProg
+  let fam = myExample
   assert "mae query" (queryResult fam (Func "mae" [Var "X", Atom "ari"])) [("X", "vitoria")]
   assert "pai query" (queryResult fam (Func "pai" [Var "X", Atom "janeti"])) [("X", "olicio")]
   assert "progenitor query" (queryResult fam (Func "progenitor" [Var "X", Atom "ari_vitor"])) [("X", "janeti")]
 
-  putStrLn "\n=== All tests passed ==="
+  putStrLn "\n=== List Operation Tests ==="
+  assert "member query" (queryResult listProg (Func "member" [Var "X", list [Atom "a", Atom "b", Atom "c"]])) [("X", "a")]
+  assert "append query" (queryResult listProg (Func "append" [list [Atom "a", Atom "b"], list [Atom "c", Atom "d"], Var "R"])) [("R", "[a, b, c, d]")]
+  assert "reverse query" (queryResult listProg (Func "reverse" [list [Atom "a", Atom "b"], Var "R"])) [("R", "[b, a]")]
+  assert "select query" (queryResult listProg (Func "select" [Atom "b", list [Atom "a", Atom "b", Atom "c"], Var "R"])) [("R", "[a, c]")]
 
-familyProg :: Prolog
-familyProg = [
-  Simple (Func "progenitor" [Atom "joao", Atom "ari"]),
-  Simple (Func "progenitor" [Atom "vitoria", Atom "ari"]),
-  Simple (Func "progenitor" [Atom "paulina", Atom "janeti"]),
-  Simple (Func "progenitor" [Atom "olicio", Atom "janeti"]),
-  Simple (Func "progenitor" [Atom "janeti", Atom "ari_vitor"]),
-  Simple (Func "sexo" [Atom "ari", Atom "masculino"]),
-  Simple (Func "sexo" [Atom "vitoria", Atom "feminino"]),
-  Simple (Func "sexo" [Atom "olicio", Atom "masculino"]),
-  Simple (Func "sexo" [Atom "janeti", Atom "feminino"]),
-  Func "mae" [Var "X", Var "Y"] :- [
-    Func "progenitor" [Var "X", Var "Y"],
-    Func "sexo" [Var "X", Atom "feminino"]
-  ],
-  Func "pai" [Var "X", Var "Y"] :- [
-    Func "progenitor" [Var "X", Var "Y"],
-    Func "sexo" [Var "X", Atom "masculino"]
-  ]
-  ]
+  putStrLn "\n=== Graph Reachability Tests ==="
+  assert "path from a" (queryResult graphProg (Func "path" [Atom "a", Var "X"])) [("X", "b")]
+  assert "path b to e" (queryResult graphProg (Func "path" [Atom "b", Var "X"])) [("X", "c")]
+  assert "connected e to a" (queryResult graphProg (Func "connected" [Atom "e", Atom "a"])) []
+
+  putStrLn "\n=== Bagof Tests ==="
+  let bagofProg = case parseProg (unlines [
+        "parent(joao, ari).", "parent(vitoria, ari).",
+        "parent(paulina, janeti).", "parent(olicio, janeti)."
+        ]) of Right p -> p; Left e -> error (show e)
+  assert "bagof with solutions" (queryResult bagofProg (Func "bagof" [Var "X", Func "parent" [Var "X", Atom "ari"], Var "R"])) [("R", "[joao, vitoria]")]
+  assert "bagof no solutions fails" (queryResult bagofProg (Func "bagof" [Var "X", Func "parent" [Var "X", Atom "nonexistent"], Var "R"])) []
+
+  putStrLn "\n=== Negation Tests ==="
+  let negProg = [
+        Simple (Func "flies" [Atom "superman"]),
+        Func "flies" [Var "X"] :- [Func "bird" [Var "X"], Not (Func "broken" [Var "X"])]
+        ]
+  assert "= unification built-in" (queryResult negProg (Func "=" [Var "X", Atom "a"])) [("X", "a")]
+  let negProg2 = [
+        Simple (Func "p" [Atom "a"]),
+        Func "q" [Var "X"] :- [Func "p" [Var "X"], Not (Func "r" [Var "X"])]
+        ]
+  assert "neg in body" (queryResult negProg2 (Func "q" [Var "X"])) [("X", "a")]
+  let negBound = case parseProg (unlines [
+        "p(a).", "p(b).",
+        "q(X) :- p(X), \\+(X = a)."
+        ]) of Right p -> p; Left e -> error (show e)
+  assert "neg bound var succeeds" (queryResult negBound (Func "q" [Var "X"])) [("X", "b")]
+  let negNested = case parseProg (unlines [
+        "p(a).", "p(b).",
+        "q(X) :- p(X), \\+\\+(X = a)."
+        ]) of Right p -> p; Left e -> error (show e)
+  assert "double neg succeeds" (queryResult negNested (Func "q" [Var "X"])) [("X", "a")]
+
+  putStrLn "\n=== Map Coloring Tests ==="
+  let colorProg = case parseProg (unlines [
+        "color(red).", "color(green).", "color(blue).",
+        "coloring(A, B, C, D) :-",
+        "  color(A), color(B), color(C), color(D),",
+        "  \\+(A = B), \\+(B = C), \\+(C = D), \\+(A = C)."
+        ]) of Right p -> p; Left e -> error (show e)
+  assert "map coloring" (queryResult colorProg (Func "coloring" [Var "A", Var "B", Var "C", Var "D"])) [("A", "red"), ("B", "green"), ("C", "blue"), ("D", "red")]
+
+  putStrLn "\n=== Arithmetic Tests ==="
+  let arithProg = case parseProg (unlines [
+        "fib(0, 0).",
+        "fib(1, 1).",
+        "fib(N, F) :- N > 1, N1 is N - 1, N2 is N - 2, fib(N1, F1), fib(N2, F2), F is F1 + F2.",
+        "fact(0, 1).",
+        "fact(N, F) :- N > 0, N1 is N - 1, fact(N1, F1), F is F1 * N.",
+        "list_len([], 0).",
+        "list_len([_|T], N) :- list_len(T, N1), N is N1 + 1.",
+        "sum_list([], 0).",
+        "sum_list([H|T], S) :- sum_list(T, S1), S is S1 + H.",
+        "even(N) :- N mod 2 =:= 0.",
+        "max(A, B, A) :- A >= B.",
+        "max(A, B, B) :- A < B."
+        ]) of Right p -> p; Left e -> error (show e)
+  assert "fib 0" (queryResult arithProg (Func "fib" [Atom "0", Var "F"])) [("F", "0")]
+  assert "fib 1" (queryResult arithProg (Func "fib" [Atom "1", Var "F"])) [("F", "1")]
+  assert "fib 6" (queryResult arithProg (Func "fib" [Atom "6", Var "F"])) [("F", "8")]
+  assert "fact 5" (queryResult arithProg (Func "fact" [Atom "5", Var "F"])) [("F", "120")]
+  assert "list_len" (queryResult arithProg (Func "list_len" [list [Atom "a", Atom "b", Atom "c"], Var "N"])) [("N", "3")]
+  assert "sum_list" (queryResult arithProg (Func "sum_list" [list [Atom "1", Atom "2", Atom "3"], Var "S"])) [("S", "6")]
+  assert "max query" (queryResult arithProg (Func "max" [Atom "3", Atom "5", Var "M"])) [("M", "5")]
+
+  putStrLn "\n=== Permutation Tests ==="
+  assert "perm of [a,b]" (queryResult listProg (Func "perm" [list [Atom "a", Atom "b"], Var "R"])) [("R", "[a, b]")]
+  assert "perm of [a]" (queryResult listProg (Func "perm" [list [Atom "a"], Var "R"])) [("R", "[a]")]
+  assert "perm of []" (queryResult listProg (Func "perm" [list [], Var "R"])) [("R", "[]")]
+
+  putStrLn "\n=== Findall Tests ==="
+  let findallProg = case parseProg (unlines [
+        "parent(joao, ari).", "parent(vitoria, ari).",
+        "parent(paulina, janeti).", "parent(olicio, janeti).",
+        "parent(janeti, ari_vitor).", "parent(ari, ari_vitor).",
+        "sibling(X, Y) :- parent(Z, X), parent(Z, Y), \\+(X = Y)."
+        ]) of Right p -> p; Left e -> error (show e)
+  let simpleProg = [Simple (Func "p" [Atom "a"]), Simple (Func "p" [Atom "b"])]
+  assert "findall simple" (queryResult simpleProg (Func "findall" [Var "X", Func "p" [Var "X"], Var "R"])) [("R", "[a, b]")]
+  assert "findall parents" (queryResult findallProg (Func "findall" [Var "X", Func "parent" [Var "X", Atom "ari"], Var "R"])) [("R", "[joao, vitoria]")]
+  assert "findall siblings" (queryResult findallProg (Func "findall" [Var "X", Func "sibling" [Atom "ari", Var "X"], Var "R"])) [("R", "[]")]
+
+  putStrLn "\n=== Edge Case Tests ==="
+  assert "unify empty lists" (unify (list []) (list [])) (Just [])
+  assert "unify nested lists" (unify (list [list [Atom "a"]]) (list [list [Atom "a"]])) (Just [])
+  assert "unify list mismatch" (unify (list [Atom "a"]) (list [Atom "b"])) Nothing
+  assert "query empty list member" (queryResult listProg (Func "member" [Var "X", list []])) []
+  assert "single clause fact" (queryResult [Simple (Func "p" [Atom "a"])] (Func "p" [Var "X"])) [("X", "a")]
+  assert "single clause rule" (queryResult [Func "q" [Var "X"] :- [Func "p" [Var "X"]], Simple (Func "p" [Atom "b"])] (Func "q" [Var "X"])) [("X", "b")]
+  assert "nested func unify" (unify (Func "f" [Func "g" [Var "X"]]) (Func "f" [Func "g" [Atom "a"]])) (Just [("X", Atom "a")])
+  assert "cut with multiple alternatives" (queryResult [Func "r" [Atom "a"] :- [Cut], Simple (Func "r" [Atom "b"]), Simple (Func "r" [Atom "c"])] (Func "r" [Var "X"])) [("X", "a")]
+
+  putStrLn "\n=== Builtin Edge Case Tests ==="
+  assert "div by zero" (interpret [] (Func "is" [Var "X", Func "/" [Atom "5", Atom "0"]]) ([], False)) []
+  assert "mod by zero" (interpret [] (Func "is" [Var "X", Func "mod" [Atom "5", Atom "0"]]) ([], False)) []
+  assert "is non-numeric" (interpret [] (Func "is" [Var "X", Atom "abc"]) ([], False)) []
+  assert "is var unbound" (interpret [] (Func "is" [Var "X", Var "Y"]) ([], False)) []
+  assert "comparison non-numeric" (interpret [] (Func "<" [Atom "abc", Atom "def"]) ([], False)) []
+  assert "eq= non-numeric" (interpret [] (Func "=:=" [Atom "abc", Atom "abc"]) ([], False)) []
+  assert "neq= non-numeric" (interpret [] (Func "=\\=" [Atom "abc", Atom "abc"]) ([], False)) []
+  assert "div exact" (interpret [] (Func "is" [Var "X", Func "/" [Atom "6", Atom "3"]]) ([], False)) [([("X", Atom "2")], False)]
+
+  putStrLn "\n=== Parser Tests ==="
+  let roundTrip s = case parseProg s of
+        Right clauses -> case parseProg (unlines [prettyClause c | c <- clauses]) of
+          Right clauses' -> clauses == clauses'
+          Left _         -> False
+        Left _ -> False
+      prettyClause (Simple t) = prettyTerm t ++ "."
+      prettyClause (t :- body) = prettyTerm t ++ " :- " ++ intercalate ", " (map prettyTerm body) ++ "."
+  assert "parse fact" (parseProg "p(a).") (Right [Simple (Func "p" [Atom "a"])])
+  assert "parse rule" (parseProg "q(X) :- p(X).") (Right [Func "q" [Var "X"] :- [Func "p" [Var "X"]]])
+  assert "parse nested func" (parseProg "f(g(a), b).") (Right [Simple (Func "f" [Func "g" [Atom "a"], Atom "b"])])
+  assert "parse list arg" (parseProg "p([a, b]).") (Right [Simple (Func "p" [list [Atom "a", Atom "b"]])])
+  assert "parse negation" (parseProg "q(X) :- p(X), \\+r(X).") (Right [Func "q" [Var "X"] :- [Func "p" [Var "X"], Not (Func "r" [Var "X"])]])
+  assert "parse arithmetic expr" (parseProg "p(X) :- X is 1 + 2 * 3.") (Right [Func "p" [Var "X"] :- [Func "is" [Var "X", Func "+" [Atom "1", Func "*" [Atom "2", Atom "3"]]]]])
+  assert "parse comparison" (parseProg "p(X) :- X > 0, X =< 10.") (Right [Func "p" [Var "X"] :- [Func ">" [Var "X", Atom "0"], Func "=<" [Var "X", Atom "10"]]])
+  assert "roundtrip simple" (roundTrip "p(a).") True
+  assert "roundtrip rule" (roundTrip "q(X) :- p(X).") True
+  assert "roundtrip list" (roundTrip "p([a, b, c]).") True
+  assert "syntax error incomplete" (case parseProg "p(" of Left _ -> True; Right _ -> False) True
+  assert "syntax error bad op" (case parseProg "p(X) :- X +* Y." of Left _ -> True; Right _ -> False) True
+  assert "syntax error unclosed list" (case parseProg "p([a, b)." of Left _ -> True; Right _ -> False) True
+
+  putStrLn "\n=== Error Path Tests ==="
+  assert "no matching clauses" (interpret [] (Func "p" [Atom "a"]) ([], False)) []
+  assert "head mismatch" (interpret [Simple (Func "p" [Atom "b"])] (Func "p" [Atom "a"]) ([], False)) []
+  assert "parse empty string" (parseProg "") (Right [])
+  assert "parse missing dot" (case parseProg "p(a)" of Left _ -> True; Right _ -> False) True
+  assert "parse bad clause syntax" (case parseProg ":- p(a)." of Left _ -> True; Right _ -> False) True
+  assert "parse bad operator" (case parseProg "p(X) :- X <> Y." of Left _ -> True; Right _ -> False) True
+
+  putStrLn "\n=== Bug Fix Regression Tests ==="
+  assert "occurs check blocks cyclic bind" (unify (Var "X") (Func "f" [Var "X"])) Nothing
+  assert "self-unify still succeeds" (unify (Var "X") (Var "X")) (Just [])
+  assert "not/not unifies through" (unify (Not (Atom "a")) (Not (Atom "a"))) (Just [])
+  assert "not/not mismatch fails" (unify (Not (Atom "a")) (Not (Atom "b"))) Nothing
+  assert "is fails on mismatched bound LHS" (interpret [] (Func "is" [Atom "99", Func "+" [Atom "2", Atom "3"]]) ([], False)) []
+  assert "is succeeds on matching bound LHS" (interpret [] (Func "is" [Atom "5", Func "+" [Atom "2", Atom "3"]]) ([], False)) [([], False)]
+  assert "eval rejects malformed numeric atom" (interpret [] (Func "is" [Var "X", Atom "1-2-3"]) ([], False)) []
+
+  putStrLn "\n=== All tests passed ==="
 
 assert :: (Eq a, Show a) => String -> a -> a -> IO ()
 assert name got expected

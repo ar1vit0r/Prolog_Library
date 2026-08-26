@@ -10,3 +10,5 @@ dist-newstyle/
 cabal.project.local
 cabal.sandbox.config
 .ghc.environment.*
+AGENTS.md
+CLAUDE.md

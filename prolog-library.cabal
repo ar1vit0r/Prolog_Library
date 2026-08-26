@@ -9,11 +9,16 @@ executable prolog-library
   main-is:          Prolog_Library.hs
   other-modules:    Term
                   , Unify
+                  , FreshVars
                   , Interpret
+                  , Parse
                   , Examples
+                  , ListOps
+                  , Graph
                   , Tests
   hs-source-dirs:   src
   build-depends:    base >=4.14 && <5
                   , mtl
+                  , parsec
   default-language: Haskell2010
   ghc-options:      -Wall -Wno-incomplete-patterns -Wno-overlapping-patterns

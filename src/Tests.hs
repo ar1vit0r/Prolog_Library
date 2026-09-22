@@ -196,6 +196,22 @@ runTests = do
   assert "parse bad clause syntax" (case parseProg ":- p(a)." of Left _ -> True; Right _ -> False) True
   assert "parse bad operator" (case parseProg "p(X) :- X <> Y." of Left _ -> True; Right _ -> False) True
 
+  putStrLn "\n=== Assert/Retract Tests ==="
+  -- interpret (not queryResult) is used here: these goals bind no
+  -- variables, so queryResult's [] can't distinguish success from failure.
+  assert "fact absent before assert" (interpret [] (Func "dyn_fact" [Atom "a"]) ([], False)) []
+  assert "assert succeeds" (interpret [] (Func "assert" [Func "dyn_fact" [Atom "a"]]) ([], False)) [([], False)]
+  assert "fact present after assert" (interpret [] (Func "dyn_fact" [Atom "a"]) ([], False)) [([], False)]
+  assert "findall sees asserted fact" (queryResult [] (Func "findall" [Var "X", Func "dyn_fact" [Var "X"], Var "R"])) [("R", "[a]")]
+  assert "retract succeeds" (interpret [] (Func "retract" [Func "dyn_fact" [Atom "a"]]) ([], False)) [([], False)]
+  assert "fact absent after retract" (interpret [] (Func "dyn_fact" [Atom "a"]) ([], False)) []
+  assert "retract on missing fact fails" (interpret [] (Func "retract" [Func "dyn_fact" [Atom "z"]]) ([], False)) []
+  assert "assertz succeeds" (interpret [] (Func "assert" [Func "dyn_order" [Atom "first"]]) ([], False)) [([], False)]
+  assert "asserta succeeds" (interpret [] (Func "asserta" [Func "dyn_order" [Atom "zeroth"]]) ([], False)) [([], False)]
+  assert "asserta puts fact first" (queryResult [] (Func "findall" [Var "X", Func "dyn_order" [Var "X"], Var "R"])) [("R", "[zeroth, first]")]
+  assert "cleanup dyn_order zeroth" (interpret [] (Func "retract" [Func "dyn_order" [Atom "zeroth"]]) ([], False)) [([], False)]
+  assert "cleanup dyn_order first" (interpret [] (Func "retract" [Func "dyn_order" [Atom "first"]]) ([], False)) [([], False)]
+
   putStrLn "\n=== Bug Fix Regression Tests ==="
   assert "occurs check blocks cyclic bind" (unify (Var "X") (Func "f" [Var "X"])) Nothing
   assert "self-unify still succeeds" (unify (Var "X") (Var "X")) (Just [])

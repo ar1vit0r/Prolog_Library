@@ -19,7 +19,7 @@
 ## Phase 3: Advanced Features
 - [x] Cuts (`Cut` term in rule bodies)
 - [x] Findall/bagof (collect all solutions into a list)
-- [ ] Dynamic assert/retract (modify the database at runtime)
+- [x] Dynamic assert/retract (modify the database at runtime; facts only)
 - [ ] Meta-interpreter (Prolog interpreter in Prolog)
 - [ ] DCG (Definite Clause Grammar) notation
 

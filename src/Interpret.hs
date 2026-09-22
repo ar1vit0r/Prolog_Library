@@ -1,5 +1,8 @@
 -- | Prolog interpreter: depth-first clause resolution with backtracking,
 -- built-in predicates, cuts, negation as failure, and fresh variable generation.
+-- Relies on the project's -fno-cse -fno-full-laziness ghc-options (see the
+-- .cabal file): without them, GHC can share/cache unsafePerformIO reads of
+-- dynamicDB across syntactically identical interpret calls.
 module Interpret
        ( queryResult
        , interpret
@@ -7,10 +10,38 @@ module Interpret
        ) where
 
 import Control.Monad (guard)
+import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
 import Term
 import Unify (unify, substituteAll, mergeSubst)
 import FreshVars (renameIO, renameIOAcc, renameManyIOAcc)
+
+-- | Clauses added at runtime via assert/asserta/retract. A single global
+-- store (not scoped per Prolog program) is fine for this single-threaded,
+-- single-session interpreter; see assert/retract built-ins below.
+{-# NOINLINE dynamicDB #-}
+dynamicDB :: IORef Prolog
+dynamicDB = unsafePerformIO (newIORef [])
+
+-- | Remove the first dynamic fact whose head unifies with the target term.
+-- Returns whether a clause was found and removed.
+retractFirst :: Term -> IO Bool
+retractFirst target = do
+  db <- readIORef dynamicDB
+  case break isMatch db of
+    (_, [])          -> return False
+    (before, _:after) -> writeIORef dynamicDB (before ++ after) >> return True
+  where
+    isMatch (Simple h) = case unify h target of
+      Just _  -> True
+      Nothing -> False
+    isMatch (_ :- _)   = False
+
+-- | Apply an update to the dynamic clause store and succeed unconditionally.
+doAssert :: (Prolog -> Prolog) -> Subst -> Bool -> [CutState]
+doAssert update subst cut =
+  unsafePerformIO (modifyIORef dynamicDB update) `seq` [(subst, cut)]
+
 
 -- | The head term of a clause.
 headOf :: Clause -> Term
@@ -105,9 +136,23 @@ interpret prog (Not g) (subst, cut) =
   if null (interpret prog g ([], False))
   then [(subst, cut)]
   else []
+-- assert/assertz/asserta/retract only handle facts (Simple clauses): the
+-- parser has no infix ':-' operator at Term level, so an asserted rule
+-- body can't be written as a builtin argument yet.
+interpret prog t@(Func "assert" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) = doAssert (++ [Simple (substituteAll subst factTerm)]) subst cut
+interpret prog t@(Func "assertz" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) = doAssert (++ [Simple (substituteAll subst factTerm)]) subst cut
+interpret prog t@(Func "asserta" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) = doAssert (Simple (substituteAll subst factTerm) :) subst cut
+interpret prog t@(Func "retract" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) =
+      if unsafePerformIO (retractFirst (substituteAll subst factTerm))
+      then [(subst, cut)]
+      else []
 interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
-    matchingClauses = filter (matches term . headOf) prog
+    matchingClauses = filter (matches term . headOf) (prog ++ unsafePerformIO (readIORef dynamicDB))
 
     matches Cut Cut               = True
     matches (Atom x) (Atom y)     = x == y

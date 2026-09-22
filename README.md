@@ -2,6 +2,8 @@
 
 A minimal Prolog interpreter written in Haskell. Implements unification, clause interpretation with backtracking, fresh variable generation, cuts, negation as failure, arithmetic, list notation, `findall`/`bagof`, and dynamic `assert`/`retract` (facts only).
 
+Started as my undergraduate thesis at UFPel (2023), "Uma DSL embutida em Haskell para programação Prolog", and published as the paper "HasKLogiX: Uma DSL embutida em Haskell para programação Prolog" at WEIT 2023. Both PDFs are in [`docs/`](docs/), with an English summary in [`docs/haskologix-summary.md`](docs/haskologix-summary.md).
+
 ## Build
 
 ```bash

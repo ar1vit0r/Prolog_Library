@@ -1,5 +1,8 @@
 -- | Prolog interpreter: depth-first clause resolution with backtracking,
 -- built-in predicates, cuts, negation as failure, and fresh variable generation.
+-- Relies on the project's -fno-cse -fno-full-laziness ghc-options (see the
+-- .cabal file): without them, GHC can share/cache unsafePerformIO reads of
+-- dynamicDB across syntactically identical interpret calls.
 module Interpret
        ( queryResult
        , interpret
@@ -7,10 +10,57 @@ module Interpret
        ) where
 
 import Control.Monad (guard)
+import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
 import Term
 import Unify (unify, substituteAll, mergeSubst)
-import FreshVars (freshenClauseIO, renameIO)
+import FreshVars (renameIO, renameIOAcc, renameManyIOAcc)
+
+-- | Clauses added at runtime via assert/asserta/retract. A single global
+-- store (not scoped per Prolog program) is fine for this single-threaded,
+-- single-session interpreter; see assert/retract built-ins below.
+{-# NOINLINE dynamicDB #-}
+dynamicDB :: IORef Prolog
+dynamicDB = unsafePerformIO (newIORef [])
+
+-- | Remove the first dynamic fact whose head unifies with the target term.
+-- Returns whether a clause was found and removed.
+retractFirst :: Term -> IO Bool
+retractFirst target = do
+  db <- readIORef dynamicDB
+  case break isMatch db of
+    (_, [])          -> return False
+    (before, _:after) -> writeIORef dynamicDB (before ++ after) >> return True
+  where
+    isMatch (Simple h) = case unify h target of
+      Just _  -> True
+      Nothing -> False
+    isMatch (_ :- _)   = False
+
+-- | Apply an update to the dynamic clause store and succeed unconditionally.
+doAssert :: (Prolog -> Prolog) -> Subst -> Bool -> [CutState]
+doAssert update subst cut =
+  unsafePerformIO (modifyIORef dynamicDB update) `seq` [(subst, cut)]
+
+
+-- | The head term of a clause.
+headOf :: Clause -> Term
+headOf (t :- _)   = t
+headOf (Simple t) = t
+
+-- | A predicate's name/arity signature, for built-in-vs-user-clause checks.
+predSig :: Term -> Maybe (String, Int)
+predSig (Func n args) = Just (n, length args)
+predSig (Atom n)      = Just (n, 0)
+predSig _             = Nothing
+
+-- | True if the program defines its own clause(s) for this term's
+-- predicate, in which case a built-in of the same name/arity must not
+-- shadow them.
+isUserDefined :: Prolog -> Term -> Bool
+isUserDefined prog t = case predSig t of
+  Nothing  -> False
+  Just sig -> any (\c -> predSig (headOf c) == Just sig) prog
 
 -- | Run a query against a Prolog program, returning the first solution as
 -- [(varname, prettyprinted value)]. Unbound variables are skipped.
@@ -43,43 +93,66 @@ resolve s t
 -- Cut fires immediately and prevents further backtracking.
 interpret :: Prolog -> Term -> CutState -> [CutState]
 interpret _ _ (subst, True) = [(subst, True)]
-interpret _ (Func "=" [x, y]) (subst, cut) =
-  case unify x y of
-    Nothing -> []
-    Just sub -> [(mergeSubst subst sub, cut)]
-interpret _ (Func "is" [x, expr]) (subst, cut) =
-  case eval subst expr of
-    Just val -> case unify (substituteAll subst x) (Atom (show val)) of
-      Just sub -> [(mergeSubst subst sub, cut)]
-      Nothing -> []
-    Nothing -> []
-interpret _ (Func "=\\=" [a, b]) (subst, cut) = evalCmp (/=) subst a b cut
-interpret _ (Func "=:=" [a, b]) (subst, cut) = evalCmp (==) subst a b cut
-interpret _ (Func "<" [a, b]) (subst, cut) = evalCmp (<) subst a b cut
-interpret _ (Func ">" [a, b]) (subst, cut) = evalCmp (>) subst a b cut
-interpret _ (Func "=<" [a, b]) (subst, cut) = evalCmp (<=) subst a b cut
-interpret _ (Func ">=" [a, b]) (subst, cut) = evalCmp (>=) subst a b cut
-interpret prog (Func "findall" [template, goal, resultList]) (subst, cut) =
-  let solutions = interpret prog goal ([], False)
-      values = [resolve soln template | (soln, _) <- solutions]
-      listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
-  in case unify listTerm resultList of
-       Nothing -> []
-       Just sub' -> [(mergeSubst subst sub', cut)]
-interpret prog (Func "bagof" [template, goal, resultList]) (subst, cut) =
-  let solutions = interpret prog goal ([], False)
-  in if null solutions then [] else
-       let values = [resolve soln template | (soln, _) <- solutions]
-           listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
-       in case unify listTerm resultList of
-            Nothing -> []
-            Just sub' -> [(mergeSubst subst sub', cut)]
+interpret prog t@(Func "=" [x, y]) (subst, cut)
+  | not (isUserDefined prog t) =
+      case unify x y of
+        Nothing -> []
+        Just sub -> [(mergeSubst subst sub, cut)]
+interpret prog t@(Func "is" [x, expr]) (subst, cut)
+  | not (isUserDefined prog t) =
+      case eval subst expr of
+        Just val -> case unify (substituteAll subst x) (Atom (show val)) of
+          Just sub -> [(mergeSubst subst sub, cut)]
+          Nothing -> []
+        Nothing -> []
+interpret prog t@(Func "=\\=" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (/=) subst a b cut
+interpret prog t@(Func "=:=" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (==) subst a b cut
+interpret prog t@(Func "<" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (<) subst a b cut
+interpret prog t@(Func ">" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (>) subst a b cut
+interpret prog t@(Func "=<" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (<=) subst a b cut
+interpret prog t@(Func ">=" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (>=) subst a b cut
+interpret prog t@(Func "findall" [template, goal, resultList]) (subst, cut)
+  | not (isUserDefined prog t) =
+      let solutions = interpret prog goal ([], False)
+          values = [resolve soln template | (soln, _) <- solutions]
+      in case unify (list values) resultList of
+           Nothing -> []
+           Just sub' -> [(mergeSubst subst sub', cut)]
+interpret prog t@(Func "bagof" [template, goal, resultList]) (subst, cut)
+  | not (isUserDefined prog t) =
+      let solutions = interpret prog goal ([], False)
+      in if null solutions then [] else
+           let values = [resolve soln template | (soln, _) <- solutions]
+           in case unify (list values) resultList of
+                Nothing -> []
+                Just sub' -> [(mergeSubst subst sub', cut)]
+interpret prog (Not g) (subst, cut) =
+  if null (interpret prog g ([], False))
+  then [(subst, cut)]
+  else []
+-- assert/assertz/asserta/retract only handle facts (Simple clauses): the
+-- parser has no infix ':-' operator at Term level, so an asserted rule
+-- body can't be written as a builtin argument yet.
+interpret prog t@(Func "assert" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) = doAssert (++ [Simple (substituteAll subst factTerm)]) subst cut
+interpret prog t@(Func "assertz" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) = doAssert (++ [Simple (substituteAll subst factTerm)]) subst cut
+interpret prog t@(Func "asserta" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) = doAssert (Simple (substituteAll subst factTerm) :) subst cut
+interpret prog t@(Func "retract" [factTerm]) (subst, cut)
+  | not (isUserDefined prog t) =
+      if unsafePerformIO (retractFirst (substituteAll subst factTerm))
+      then [(subst, cut)]
+      else []
 interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
-    matchingClauses = filter (matches term . headOf) prog
-
-    headOf (t :- _)   = t
-    headOf (Simple t) = t
+    matchingClauses = filter (matches term . headOf) (prog ++ unsafePerformIO (readIORef dynamicDB))
 
     matches Cut Cut               = True
     matches (Atom x) (Atom y)     = x == y
@@ -90,15 +163,19 @@ interpret prog term (_, _) = concatMap tryClause matchingClauses
     matches (Not t1) (Not t2)     = matches t1 t2
     matches _ _                   = False
 
+    -- unsafePerformIO: safe here because the interpreter is single-threaded.
+    -- The head is renamed and unified first; the (potentially larger) body
+    -- is only renamed if the head actually unifies, so clauses that don't
+    -- match skip the extra IO and traversal.
     tryClause c =
-      -- unsafePerformIO: safe here because the interpreter is single-threaded
-      let freshened = unsafePerformIO (freshenClauseIO c)
-      in case unify (headOf freshened) term of
+      let (freshHead, acc) = unsafePerformIO (renameIOAcc (headOf c) [])
+      in case unify freshHead term of
            Nothing -> []
-           Just sub -> case freshened of
+           Just sub -> case c of
              Simple _ -> [(sub, False)]
              _ :- body ->
-               let bodyGoals = map (substituteAll sub) body
+               let freshBody = unsafePerformIO (fst <$> renameManyIOAcc acc body)
+                   bodyGoals = map (substituteAll sub) freshBody
                    bodyResults = interpretBody prog bodyGoals ([], False)
                in [(mergeSubst sub bodySub, bodyCut) | (bodySub, bodyCut) <- bodyResults]
 

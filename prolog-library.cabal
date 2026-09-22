@@ -22,3 +22,4 @@ executable prolog-library
                   , parsec
   default-language: Haskell2010
   ghc-options:      -Wall -Wno-incomplete-patterns -Wno-overlapping-patterns
+                    -fno-cse -fno-full-laziness

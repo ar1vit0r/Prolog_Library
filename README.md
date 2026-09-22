@@ -1,6 +1,6 @@
 # Prolog_Library
 
-A minimal Prolog interpreter written in Haskell. Implements unification, clause interpretation with backtracking, fresh variable generation, cuts, and error reporting.
+A minimal Prolog interpreter written in Haskell. Implements unification, clause interpretation with backtracking, fresh variable generation, cuts, negation as failure, arithmetic, list notation, `findall`/`bagof`, and dynamic `assert`/`retract` (facts only).
 
 ## Build
 
@@ -26,17 +26,25 @@ ghci src/Term.hs src/Unify.hs src/Interpret.hs src/Examples.hs
 |--------|---------|
 | `Term` | Core types: `Term`, `Clause`, `Prolog`, `Subst` |
 | `Unify` | Robinson unification and substitution |
-| `Interpret` | Interpreter with backtracking and cuts |
+| `FreshVars` | Fresh-variable generation and alpha-conversion |
+| `Parse` | Parsec-based parser for terms and clause databases |
+| `Interpret` | Interpreter with backtracking, cuts, negation, and built-ins |
+| `ListOps` | List predicates (`member`, `append`, `reverse`, `select`, `perm`) |
+| `Graph` | Graph reachability example (`edge`/`path`/`connected`) |
 | `Examples` | Genealogical tree database and sample queries |
-| `Tests` | Unit tests for unification, substitution, and queries |
+| `Tests` | Unit tests covering every module above |
 
 ## Features
 
 - **Unification**: standard Robinson unification with substitution
 - **Backtracking**: depth-first search over the clause database
 - **Cuts (`Cut`)**: commits to the current clause, prevents backtracking
+- **Negation as failure (`\+`)**
+- **Arithmetic**: `is`, comparisons, `+ - * / mod`
+- **`findall`/`bagof`**: collect all solutions into a list
+- **Dynamic `assert`/`assertz`/`asserta`/`retract`**: facts only
 - **Fresh variables**: state-based alpha-conversion (no name collisions)
-- **Error reporting**: `Either String` results with failure messages
+- **Failure reporting**: no matching clause is an empty solution list, not an error
 
 ## Example
 

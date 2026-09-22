@@ -10,7 +10,7 @@ import Control.Monad (guard)
 import System.IO.Unsafe (unsafePerformIO)
 import Term
 import Unify (unify, substituteAll, mergeSubst)
-import FreshVars (freshenClauseIO, renameIO)
+import FreshVars (renameIO, renameIOAcc, renameManyIOAcc)
 
 -- | The head term of a clause.
 headOf :: Clause -> Term
@@ -90,8 +90,7 @@ interpret prog t@(Func "findall" [template, goal, resultList]) (subst, cut)
   | not (isUserDefined prog t) =
       let solutions = interpret prog goal ([], False)
           values = [resolve soln template | (soln, _) <- solutions]
-          listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
-      in case unify listTerm resultList of
+      in case unify (list values) resultList of
            Nothing -> []
            Just sub' -> [(mergeSubst subst sub', cut)]
 interpret prog t@(Func "bagof" [template, goal, resultList]) (subst, cut)
@@ -99,8 +98,7 @@ interpret prog t@(Func "bagof" [template, goal, resultList]) (subst, cut)
       let solutions = interpret prog goal ([], False)
       in if null solutions then [] else
            let values = [resolve soln template | (soln, _) <- solutions]
-               listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
-           in case unify listTerm resultList of
+           in case unify (list values) resultList of
                 Nothing -> []
                 Just sub' -> [(mergeSubst subst sub', cut)]
 interpret prog (Not g) (subst, cut) =
@@ -120,15 +118,19 @@ interpret prog term (_, _) = concatMap tryClause matchingClauses
     matches (Not t1) (Not t2)     = matches t1 t2
     matches _ _                   = False
 
+    -- unsafePerformIO: safe here because the interpreter is single-threaded.
+    -- The head is renamed and unified first; the (potentially larger) body
+    -- is only renamed if the head actually unifies, so clauses that don't
+    -- match skip the extra IO and traversal.
     tryClause c =
-      -- unsafePerformIO: safe here because the interpreter is single-threaded
-      let freshened = unsafePerformIO (freshenClauseIO c)
-      in case unify (headOf freshened) term of
+      let (freshHead, acc) = unsafePerformIO (renameIOAcc (headOf c) [])
+      in case unify freshHead term of
            Nothing -> []
-           Just sub -> case freshened of
+           Just sub -> case c of
              Simple _ -> [(sub, False)]
              _ :- body ->
-               let bodyGoals = map (substituteAll sub) body
+               let freshBody = unsafePerformIO (fst <$> renameManyIOAcc acc body)
+                   bodyGoals = map (substituteAll sub) freshBody
                    bodyResults = interpretBody prog bodyGoals ([], False)
                in [(mergeSubst sub bodySub, bodyCut) | (bodySub, bodyCut) <- bodyResults]
 

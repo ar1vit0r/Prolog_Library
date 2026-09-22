@@ -4,13 +4,14 @@
 module FreshVars
        ( freshenClauseIO
        , renameIO
+       , renameIOAcc
+       , renameManyIOAcc
        ) where
 
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad (foldM)
 import Term
-import Unify (varsInTerm)
 
 {-# NOINLINE counter #-}
 counter :: IORef Int
@@ -22,39 +23,25 @@ freshVarIO = do
   writeIORef counter (n + 1)
   return ("_V" ++ show n)
 
-collectClauseVars :: Clause -> [String]
-collectClauseVars (Simple t) = varsInTerm t
-collectClauseVars (t :- body) = varsInTerm t ++ concatMap varsInTerm body
-
-unique :: Eq a => [a] -> [a]
-unique [] = []
-unique (x:xs) = x : unique (filter (/= x) xs)
-
+-- | Alpha-convert every variable in a clause (head and body) to a fresh
+-- name, sharing one mapping across the whole clause so repeated variables
+-- stay consistent.
 freshenClauseIO :: Clause -> IO Clause
-freshenClauseIO c = do
-  let allVars = unique (collectClauseVars c)
-  mapping <- mapM (\v -> do { v' <- freshVarIO; return (v, v') }) allVars
-  return (applyClauseMapping mapping c)
+freshenClauseIO (Simple t) = do
+  (t', _) <- renameIO t
+  return (Simple t')
+freshenClauseIO (t :- body) = do
+  (t', acc) <- renameIOAcc t []
+  (body', _) <- renameManyIOAcc acc body
+  return (t' :- body')
 
-applyClauseMapping :: [(String, String)] -> Clause -> Clause
-applyClauseMapping m (Simple t) = Simple (applyTermMapping m t)
-applyClauseMapping m (t :- body) =
-  applyTermMapping m t :- map (applyTermMapping m) body
-
-applyTermMapping :: [(String, String)] -> Term -> Term
-applyTermMapping _ (Atom x) = Atom x
-applyTermMapping _ Cut = Cut
-applyTermMapping m (Var x) = case lookup x m of
-  Just x' -> Var x'
-  Nothing -> Var x
-applyTermMapping m (Func n args) = Func n (map (applyTermMapping m) args)
-applyTermMapping m (Not t) = Not (applyTermMapping m t)
-
+-- | Alpha-convert a single term to fresh variable names.
 renameIO :: Term -> IO (Term, [(String, String)])
-renameIO t = do
-  (t', mapping) <- renameIOAcc t []
-  return (t', mapping)
+renameIO t = renameIOAcc t []
 
+-- | Alpha-convert a term, extending an existing variable mapping so that
+-- a variable already seen (e.g. shared between a clause's head and body,
+-- or across several terms) gets the same fresh name every time.
 renameIOAcc :: Term -> [(String, String)] -> IO (Term, [(String, String)])
 renameIOAcc (Atom x) acc = return (Atom x, acc)
 renameIOAcc Cut acc = return (Cut, acc)
@@ -64,12 +51,19 @@ renameIOAcc (Var x) acc = case lookup x acc of
     freshName <- freshVarIO
     return (Var freshName, acc ++ [(x, freshName)])
 renameIOAcc (Func n args) acc = do
-  (args', acc') <- foldM go ([], acc) args
-  return (Func n (reverse args'), acc')
-  where
-    go (as, a) arg = do
-      (arg', a') <- renameIOAcc arg a
-      return (arg':as, a')
+  (args', acc') <- renameManyIOAcc acc args
+  return (Func n args', acc')
 renameIOAcc (Not t) acc = do
   (t', acc') <- renameIOAcc t acc
   return (Not t', acc')
+
+-- | Alpha-convert a list of terms left-to-right, threading the mapping
+-- through so variables shared across the terms stay consistent.
+renameManyIOAcc :: [(String, String)] -> [Term] -> IO ([Term], [(String, String)])
+renameManyIOAcc acc0 ts = do
+  (ts', acc') <- foldM go ([], acc0) ts
+  return (reverse ts', acc')
+  where
+    go (done, acc) t = do
+      (t', acc') <- renameIOAcc t acc
+      return (t':done, acc')

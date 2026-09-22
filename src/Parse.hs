@@ -52,25 +52,19 @@ parseExpr = do
     rhs <- parseExpr2
     return (Func op [lhs, rhs])
 
+-- | Left-associative precedence-climbing: repeatedly extend `lhs` with
+-- `op [lhs, rhs]` as long as the operator and next operand keep matching.
+chainOp :: Parser String -> Parser Term -> Term -> Parser Term
+chainOp opP nextP lhs = option lhs $ try $ do
+  op <- opP
+  rhs <- nextP
+  chainOp opP nextP (Func op [lhs, rhs])
+
 parseExpr2 :: Parser Term
-parseExpr2 = do
-  lhs <- parseExpr1
-  parseExpr2Rest lhs
-  where
-    parseExpr2Rest lhs = option lhs $ try $ do
-      op <- symbol "+" <|> symbol "-"
-      rhs <- parseExpr1
-      parseExpr2Rest (Func op [lhs, rhs])
+parseExpr2 = parseExpr1 >>= chainOp (symbol "+" <|> symbol "-") parseExpr1
 
 parseExpr1 :: Parser Term
-parseExpr1 = do
-  lhs <- parsePrimary
-  parseExpr1Rest lhs
-  where
-    parseExpr1Rest lhs = option lhs $ try $ do
-      op <- symbol "*" <|> symbol "/" <|> symbol "mod"
-      rhs <- parsePrimary
-      parseExpr1Rest (Func op [lhs, rhs])
+parseExpr1 = parsePrimary >>= chainOp (symbol "*" <|> symbol "/" <|> symbol "mod") parsePrimary
 
 parsePrimary :: Parser Term
 parsePrimary = try parseList <|> try parseNot <|> try parseParen <|> try parseNegNum <|> try parseVar <|> parseAtomOrFunc

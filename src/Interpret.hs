@@ -12,6 +12,25 @@ import Term
 import Unify (unify, substituteAll, mergeSubst)
 import FreshVars (freshenClauseIO, renameIO)
 
+-- | The head term of a clause.
+headOf :: Clause -> Term
+headOf (t :- _)   = t
+headOf (Simple t) = t
+
+-- | A predicate's name/arity signature, for built-in-vs-user-clause checks.
+predSig :: Term -> Maybe (String, Int)
+predSig (Func n args) = Just (n, length args)
+predSig (Atom n)      = Just (n, 0)
+predSig _             = Nothing
+
+-- | True if the program defines its own clause(s) for this term's
+-- predicate, in which case a built-in of the same name/arity must not
+-- shadow them.
+isUserDefined :: Prolog -> Term -> Bool
+isUserDefined prog t = case predSig t of
+  Nothing  -> False
+  Just sig -> any (\c -> predSig (headOf c) == Just sig) prog
+
 -- | Run a query against a Prolog program, returning the first solution as
 -- [(varname, prettyprinted value)]. Unbound variables are skipped.
 queryResult :: Prolog -> Term -> [(String, String)]
@@ -43,43 +62,54 @@ resolve s t
 -- Cut fires immediately and prevents further backtracking.
 interpret :: Prolog -> Term -> CutState -> [CutState]
 interpret _ _ (subst, True) = [(subst, True)]
-interpret _ (Func "=" [x, y]) (subst, cut) =
-  case unify x y of
-    Nothing -> []
-    Just sub -> [(mergeSubst subst sub, cut)]
-interpret _ (Func "is" [x, expr]) (subst, cut) =
-  case eval subst expr of
-    Just val -> case unify (substituteAll subst x) (Atom (show val)) of
-      Just sub -> [(mergeSubst subst sub, cut)]
-      Nothing -> []
-    Nothing -> []
-interpret _ (Func "=\\=" [a, b]) (subst, cut) = evalCmp (/=) subst a b cut
-interpret _ (Func "=:=" [a, b]) (subst, cut) = evalCmp (==) subst a b cut
-interpret _ (Func "<" [a, b]) (subst, cut) = evalCmp (<) subst a b cut
-interpret _ (Func ">" [a, b]) (subst, cut) = evalCmp (>) subst a b cut
-interpret _ (Func "=<" [a, b]) (subst, cut) = evalCmp (<=) subst a b cut
-interpret _ (Func ">=" [a, b]) (subst, cut) = evalCmp (>=) subst a b cut
-interpret prog (Func "findall" [template, goal, resultList]) (subst, cut) =
-  let solutions = interpret prog goal ([], False)
-      values = [resolve soln template | (soln, _) <- solutions]
-      listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
-  in case unify listTerm resultList of
-       Nothing -> []
-       Just sub' -> [(mergeSubst subst sub', cut)]
-interpret prog (Func "bagof" [template, goal, resultList]) (subst, cut) =
-  let solutions = interpret prog goal ([], False)
-  in if null solutions then [] else
-       let values = [resolve soln template | (soln, _) <- solutions]
-           listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
-       in case unify listTerm resultList of
-            Nothing -> []
-            Just sub' -> [(mergeSubst subst sub', cut)]
+interpret prog t@(Func "=" [x, y]) (subst, cut)
+  | not (isUserDefined prog t) =
+      case unify x y of
+        Nothing -> []
+        Just sub -> [(mergeSubst subst sub, cut)]
+interpret prog t@(Func "is" [x, expr]) (subst, cut)
+  | not (isUserDefined prog t) =
+      case eval subst expr of
+        Just val -> case unify (substituteAll subst x) (Atom (show val)) of
+          Just sub -> [(mergeSubst subst sub, cut)]
+          Nothing -> []
+        Nothing -> []
+interpret prog t@(Func "=\\=" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (/=) subst a b cut
+interpret prog t@(Func "=:=" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (==) subst a b cut
+interpret prog t@(Func "<" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (<) subst a b cut
+interpret prog t@(Func ">" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (>) subst a b cut
+interpret prog t@(Func "=<" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (<=) subst a b cut
+interpret prog t@(Func ">=" [a, b]) (subst, cut)
+  | not (isUserDefined prog t) = evalCmp (>=) subst a b cut
+interpret prog t@(Func "findall" [template, goal, resultList]) (subst, cut)
+  | not (isUserDefined prog t) =
+      let solutions = interpret prog goal ([], False)
+          values = [resolve soln template | (soln, _) <- solutions]
+          listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
+      in case unify listTerm resultList of
+           Nothing -> []
+           Just sub' -> [(mergeSubst subst sub', cut)]
+interpret prog t@(Func "bagof" [template, goal, resultList]) (subst, cut)
+  | not (isUserDefined prog t) =
+      let solutions = interpret prog goal ([], False)
+      in if null solutions then [] else
+           let values = [resolve soln template | (soln, _) <- solutions]
+               listTerm = foldr (\v acc -> Func "." [v, acc]) (Atom "[]") values
+           in case unify listTerm resultList of
+                Nothing -> []
+                Just sub' -> [(mergeSubst subst sub', cut)]
+interpret prog (Not g) (subst, cut) =
+  if null (interpret prog g ([], False))
+  then [(subst, cut)]
+  else []
 interpret prog term (_, _) = concatMap tryClause matchingClauses
   where
     matchingClauses = filter (matches term . headOf) prog
-
-    headOf (t :- _)   = t
-    headOf (Simple t) = t
 
     matches Cut Cut               = True
     matches (Atom x) (Atom y)     = x == y
